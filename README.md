@@ -11,8 +11,8 @@ daredevil has two parts:
 
 | Part | What it does | Deterministic? |
 |---|---|---|
-| **Engine**: a TypeScript CLI ([Playwright](https://playwright.dev) + [axe-core](https://github.com/dequelabs/axe-core)) | Crawls the pages, runs the WCAG checks, scores, groups and writes `report.json` / `report.md` | Yes. The score comes only from here |
-| **Agent**: a Claude Code subagent (`.claude/agents/daredevil.md`) | Runs the engine, reviews what automation can't decide (alt-text quality, keyboard behaviour, undecided items), writes `summary.md` and `handoff.md` | No. It is AI judgement, kept separate from the score |
+| **Engine**: a TypeScript CLI ([Playwright](https://playwright.dev) + [axe-core](https://github.com/dequelabs/axe-core)) | Crawls the pages, runs the WCAG checks, scores, groups and writes `report.json`, `report.md` and `report.html` | Yes. The score comes only from here |
+| **Agent**: a Claude Code subagent (`.claude/agents/daredevil.md`) | Runs the engine, reviews what automation can't decide (alt-text quality, keyboard behaviour, undecided items) and returns `summary.md`, `assisted.json` and `handoff.md`, which the calling session writes and renders into `report.html` | No. It is AI judgement, kept separate from the score |
 
 ---
 
@@ -71,13 +71,25 @@ Each run writes to `reports/<site-and-path>/<timestamp>/`:
 | File | Audience | Produced by |
 |---|---|---|
 | `report.json` | machines and AIs: the full structured result | engine |
-| `report.md` | humans who want detail: score, prioritised issues, evidence | engine |
+| `report.html` | humans: a designed, self-contained report (score panel, filterable issues, AI findings, image gallery…), re-rendered with the agent's files | engine (`render`) |
+| `report.md` | humans who want plain text: score, prioritised issues, evidence | engine |
 | `assets/*.png` | element screenshots of images, for alt-text review | engine |
 | `summary.md` | humans: a one-page executive summary | agent |
 | `assisted.json` | machines: the agent's findings, with confidence levels | agent |
 | `handoff.md` | an AI fixer: one task per root cause, with fix guidance and acceptance criteria | agent |
 
 ## Report samples
+
+### HTML report
+
+`report.html` is a single self-contained file (no external resources), with light and dark themes, a phone layout, and print styles. It is meant to be accessible itself: landmarks, a skip link, native disclosure widgets, and impact never conveyed by colour alone. Everything taken from the audited site is escaped.
+
+![HTML report: score panel](docs/report-html.png)
+
+![HTML report: prioritised issues, one expanded](docs/report-html-issues.png)
+
+It contains the score panel and breakdown, the agent's summary, the change since the last run, issues by priority (filterable by impact, each expandable to locations and evidence), the AI-assisted findings with their confidence, the undecided items, the keyboard probe, a gallery of image screenshots next to their alt text, and the page list.
+
 
 The samples below are real output from auditing W3C's [Before and After Demonstration](https://www.w3.org/WAI/demos/bad/), a site built to be inaccessible on purpose, with a repaired "after" version (8 pages each).
 
@@ -245,6 +257,8 @@ When the same site is re-audited, this comparison is added automatically to `rep
 2. **Tasks**: one per issue group, in priority order. Each task has Where (patterns, pages), Evidence (HTML, failure summary), Fix guidance (specific to the evidence) and Done when (the group id is gone from a `--same-pages` re-run).
 3. **Cautions**: fixes that probably belong in a design system, CMS content or a third-party widget, not in page markup.
 
+**How the agent's files reach the disk.** Claude Code does not let subagents write report files, so daredevil returns its three deliverables as delimited blocks in its final message. The main session writes them into the report folder and runs `npm run -s render -- <reportDir>`, which folds them into `report.html` (see "When the daredevil subagent returns" in `CLAUDE.md`).
+
 ---
 
 ## Scoring model
@@ -299,7 +313,8 @@ The precise selector patterns of each group are kept in `patterns`, so the fixer
   npm run -s audit -- https://www.mysite.com/shop --same-pages reports/www.mysite.com_shop/<timestamp>/report.json
   ```
 - **Between sites:** use the same options for each (`--max-pages`, viewport), then compare `summary.score`. Comparing the same section type (e.g. `/shop` against `/shop`) is fairer than comparing whole sites.
-- **Determinism:** pages load with reduced motion, a fixed viewport, `networkidle` plus `--wait-ms` of settle time, and a fresh browser context per page. Highly dynamic pages (A/B tests, rotating banners, cookie walls) can still vary slightly between runs.
+- **Determinism:** pages load with reduced motion, a fixed viewport, `networkidle` plus `--wait-ms` of settle time, and a fresh browser context per page. Highly dynamic pages (A/B tests, rotating banners) can still vary slightly between runs.
+- **Cookie-consent dialogs** are dismissed before scanning, the way a privacy-minded user would: "reject" or "continue without accepting", never "accept". Known consent tools (Didomi, OneTrust, Cookiebot, Axeptio, tarteaucitron, Usercentrics…) are detected, with a text-based fallback in French and English. Without this, the dialog covers the page: the keyboard probe gets stuck in it and screenshots show it. Use `--consent-selector` when a dialog isn't recognised, and `--keep-consent` to audit the dialog itself. Runs with different consent handling are flagged as not comparable.
 
 ## CLI reference
 
@@ -314,11 +329,14 @@ npm run -s audit -- <url> [options]
   --keep-query           Treat ?query variants as distinct pages
   --same-pages <json>    Re-scan exactly the pages of a previous report.json
   --skip-best-practice   Do not run axe best-practice rules
+  --keep-consent         Do not dismiss cookie-consent dialogs (audit them as shown)
+  --consent-selector <s> CSS selector of the consent 'reject' button, if not auto-detected
   --skip-keyboard        Skip the keyboard probe
   --skip-images          Skip image screenshots for alt-text review
   --out <dir>            Reports root (default ./reports)
 
 npm run -s diff -- <before/report.json> <after/report.json>
+npm run -s render -- <reportDir>     rebuild report.md / report.html with the agent's files
 ```
 
 **User agent.** Many sites reject headless browsers (W3C returns HTTP 403). By default daredevil sends the regular Chrome user agent plus a `daredevil-a11y/0.1` token, so it stays identifiable in server logs. Audit only sites you are allowed to crawl, and keep `--concurrency` low on production sites.
@@ -346,6 +364,8 @@ src/probes.ts    keyboard probe, image inventory and screenshots
 src/group.ts     root-cause signatures and grouping
 src/score.ts     scoring model (bump SCORING_VERSION on any change)
 src/report.ts    report.json assembly, diff, markdown rendering
+src/html.ts      HTML report
+src/consent.ts   cookie-dialog dismissal
 .claude/agents/daredevil.md   the Claude Code agent
 ```
 

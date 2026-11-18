@@ -63,3 +63,13 @@ test('score: perfect page is 100, monotonic in nodes and impact', () => {
   // best-practice rules do not affect the headline
   assert.equal(scorePage(page([rule('serious', 3, 'none')])).overall, 100);
 });
+
+test('markdownToHtml escapes and renders the agent summary subset', async () => {
+  const { markdownToHtml } = await import('../src/html.ts');
+  const html = markdownToHtml('# T\n\nHello **bold** `<b>` <script>x</script>\n\n- a\n  - b\n\n| H | I |\n|---|---|\n| 1 | 2 |');
+  assert.ok(!html.includes('<script>'));
+  assert.match(html, /<strong>bold<\/strong>/);
+  assert.match(html, /<code>&lt;b&gt;<\/code>/);
+  assert.match(html, /<ul><li>a<ul><li>b<\/li><\/ul><\/li><\/ul>/);
+  assert.match(html, /<th scope="col">H<\/th>/);
+});

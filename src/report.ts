@@ -66,6 +66,9 @@ export function diffReports(a: Report, b: Report): ReportDiff {
   const warnings: string[] = [];
   if (a.tool.scoringVersion !== b.tool.scoringVersion) warnings.push(`scoring version differs (${a.tool.scoringVersion} → ${b.tool.scoringVersion}): scores are not comparable`);
   if (a.tool.axeVersion !== b.tool.axeVersion) warnings.push(`axe-core version differs (${a.tool.axeVersion} → ${b.tool.axeVersion}): rule set may differ`);
+  if ((a.config.dismissConsent ?? false) !== (b.config.dismissConsent ?? false)) {
+    warnings.push(`cookie-consent handling differs (dismissed: ${a.config.dismissConsent ?? false} → ${b.config.dismissConsent ?? false}): the dialog changes what is tested`);
+  }
   const pathsA = new Set(a.pages.filter((p) => p.status === 'ok').map((p) => p.path));
   const pathsB = new Set(b.pages.filter((p) => p.status === 'ok').map((p) => p.path));
   const onlyA = [...pathsA].filter((p) => !pathsB.has(p));
@@ -203,7 +206,7 @@ export function reportMarkdown(r: Report, diff?: ReportDiff): string {
     out.push('| Page | Tab stops / tabbable | Skip link | No visible focus | Possible trap |', '|---|---:|---|---:|---|');
     for (const p of kb) {
       const k = p.keyboard!;
-      out.push(`| ${code(p.path)} | ${k.tabStops} / ${k.tabbableElements} | ${k.hasSkipLink ? 'yes' : 'no'} | ${k.noVisibleFocus.length} | ${k.possibleTrap ? code(k.possibleTrap) : ''} |`);
+      out.push(`| ${code(p.path)} | ${k.tabStops}${k.capped ? '+ (limit)' : ''} / ${k.tabbableElements} | ${k.hasSkipLink ? 'yes' : 'no'} | ${k.noVisibleFocus.length} | ${k.possibleTrap ? code(k.possibleTrap) : ''} |`);
     }
     out.push('');
   }

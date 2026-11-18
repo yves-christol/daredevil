@@ -1,51 +1,71 @@
 import type { Page } from 'playwright';
 import type { ImageInfo, KeyboardProbe } from './types.ts';
 
-const MAX_TABS = 80;
+export const MAX_TABS = 80;
 
 /**
  * Heuristic keyboard probe (assisted, not scored): tabs through the page and flags
  * elements whose focused style is identical to their unfocused style, plus focus traps.
+ * Shadow DOM aware: web components (e.g. design-system headers) are traversed, and the
+ * focused element is resolved through nested shadowRoot.activeElement.
+ *
+ * NB: no named functions in page-evaluated code: tsx/esbuild would inject a `__name`
+ * helper that does not exist in the browser. Hence the explicit loops below.
  */
 export async function keyboardProbe(page: Page): Promise<KeyboardProbe> {
   const tabbableElements = await page.evaluate(() => {
     const sel =
       'a[href], button, input:not([type=hidden]), select, textarea, summary, iframe, [tabindex]:not([tabindex="-1"]), [contenteditable=""], [contenteditable=true]';
-    // NB: no named functions in page-evaluated code: tsx/esbuild would inject a
-    // `__name` helper that does not exist in the browser.
-    const w = window as unknown as { __ddStyles: WeakMap<Element, string> };
-    w.__ddStyles = new WeakMap();
-    const els = [...document.querySelectorAll(sel)].filter((el) => {
-      const r = (el as HTMLElement).getBoundingClientRect();
-      return r.width > 0 && r.height > 0 && !(el as HTMLButtonElement).disabled;
-    });
+    const w = window as unknown as { __dd: { styles: WeakMap<Element, string>; seen: WeakSet<Element>; last: Element | null } };
+    w.__dd = { styles: new WeakMap(), seen: new WeakSet(), last: null };
+    // Collect tabbable elements in the document and in every open shadow root.
+    const roots: (Document | ShadowRoot)[] = [document];
+    const els: Element[] = [];
+    while (roots.length) {
+      const root = roots.pop()!;
+      for (const el of root.querySelectorAll('*')) {
+        if (el.shadowRoot) roots.push(el.shadowRoot);
+        if (!el.matches(sel)) continue;
+        const r = (el as HTMLElement).getBoundingClientRect();
+        if (r.width > 0 && r.height > 0 && !(el as HTMLButtonElement).disabled) els.push(el);
+      }
+    }
     for (const el of els) {
       const s = getComputedStyle(el);
-      w.__ddStyles.set(el, [s.outlineStyle, s.outlineWidth, s.outlineColor, s.boxShadow, s.borderColor, s.backgroundColor, s.color, s.textDecorationLine].join('|'));
+      w.__dd.styles.set(el, [s.outlineStyle, s.outlineWidth, s.outlineColor, s.boxShadow, s.borderColor, s.backgroundColor, s.color, s.textDecorationLine].join('|'));
     }
     (document.activeElement as HTMLElement | null)?.blur();
     return els.length;
   });
 
   const noVisibleFocus: KeyboardProbe['noVisibleFocus'] = [];
-  const seen = new Set<string>();
   let tabStops = 0;
   let firstStop: string | undefined;
   let hasSkipLink = false;
   let possibleTrap: string | undefined;
-  let last = '';
   let repeats = 0;
+  let completed = false;
+  const limit = Math.min(MAX_TABS, tabbableElements + 5);
 
-  for (let i = 0; i < Math.min(MAX_TABS, tabbableElements + 5); i++) {
+  for (let i = 0; i < limit; i++) {
     await page.keyboard.press('Tab');
     await page.waitForTimeout(30); // let focus transitions settle
     const info = await page.evaluate(() => {
-      const el = document.activeElement;
+      let el: Element | null = document.activeElement;
+      const hosts: string[] = [];
+      while (el && el.shadowRoot && el.shadowRoot.activeElement) {
+        hosts.push(el.tagName.toLowerCase() + (el.id ? `#${el.id}` : ''));
+        el = el.shadowRoot.activeElement;
+      }
       if (!el || el === document.body || el === document.documentElement) return null;
+      const w = window as unknown as { __dd: { styles: WeakMap<Element, string>; seen: WeakSet<Element>; last: Element | null } };
+      const same = w.__dd.last === el;
+      const wrapped = !same && w.__dd.seen.has(el);
+      w.__dd.last = el;
+      w.__dd.seen.add(el);
       const s = getComputedStyle(el);
       const now = [s.outlineStyle, s.outlineWidth, s.outlineColor, s.boxShadow, s.borderColor, s.backgroundColor, s.color, s.textDecorationLine].join('|');
-      const w = window as unknown as { __ddStyles: WeakMap<Element, string> };
-      const before = w.__ddStyles.get(el);
+      const before = w.__dd.styles.get(el);
       const path: string[] = [];
       for (let n: Element | null = el; n && n !== document.body && path.length < 4; n = n.parentElement) {
         let p = n.tagName.toLowerCase();
@@ -55,33 +75,43 @@ export async function keyboardProbe(page: Page): Promise<KeyboardProbe> {
       }
       const visibleOutline = s.outlineStyle !== 'none' && parseFloat(s.outlineWidth) > 0;
       return {
-        selector: path.join(' > '),
+        selector: (hosts.length ? hosts.join(' >>> ') + ' >>> ' : '') + path.join(' > '),
         html: el.outerHTML.slice(0, 200),
         href: el.getAttribute('href') ?? '',
+        same,
+        wrapped,
         unchanged: before !== undefined && before === now && !visibleOutline,
       };
     });
     if (!info) {
-      if (tabStops > 0) break; // focus left the document: full cycle done
+      if (tabStops > 0) {
+        completed = true; // focus left the document: full cycle done
+        break;
+      }
       continue;
     }
+    if (info.wrapped) {
+      completed = true; // back to an element already visited: full cycle done
+      break;
+    }
+    if (info.same) {
+      if (++repeats >= 3) {
+        possibleTrap = info.selector;
+        completed = true;
+        break;
+      }
+      continue;
+    }
+    repeats = 0;
     tabStops++;
     if (!firstStop) {
       firstStop = info.selector;
       hasSkipLink = info.href.startsWith('#') && info.href.length > 1;
     }
-    if (info.selector === last) {
-      if (++repeats >= 3) {
-        possibleTrap = info.selector;
-        break;
-      }
-    } else repeats = 0;
-    last = info.selector;
-    if (seen.has(info.selector + info.html)) break; // wrapped around
-    seen.add(info.selector + info.html);
     if (info.unchanged && noVisibleFocus.length < 15) noVisibleFocus.push({ selector: info.selector, html: info.html });
   }
-  return { tabStops, tabbableElements, firstStop, hasSkipLink, noVisibleFocus, possibleTrap };
+  const capped = !completed && limit === MAX_TABS;
+  return { tabStops, capped, tabbableElements, firstStop, hasSkipLink, noVisibleFocus, possibleTrap };
 }
 
 /** Inventory of images with alt text, with element screenshots so an AI can judge alt quality. */

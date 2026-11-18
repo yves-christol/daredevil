@@ -18,6 +18,10 @@ export interface AuditConfig {
   keepQuery: boolean;
   tags: string[];
   keyboardProbe: boolean;
+  /** Dismiss cookie-consent dialogs (reject / continue without accepting) before scanning. */
+  dismissConsent: boolean;
+  /** Extra CSS selector of a consent 'reject' control, tried before the built-in list. */
+  consentSelector?: string;
   imageCapture: boolean;
   /** When set, the crawl is replaced by this fixed page list (for comparable re-runs). */
   fixedPages?: string[];
@@ -50,6 +54,8 @@ export interface RuleResult {
 
 export interface KeyboardProbe {
   tabStops: number;
+  /** True when the probe stopped at its Tab-press limit (not a full cycle): unreached elements are then expected. */
+  capped?: boolean;
   tabbableElements: number;
   firstStop?: string;
   hasSkipLink: boolean;
@@ -81,6 +87,8 @@ export interface PageResult {
   images?: ImageInfo[];
   /** Assisted probes that failed on this page (their data is then missing). */
   probeErrors?: string[];
+  /** Cookie-consent handling on this page. */
+  consent?: { dismissed: boolean; method?: string };
   score?: PageScore;
 }
 

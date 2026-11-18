@@ -3,6 +3,14 @@
 <head><title>Product 2</title><style>.muted{color:#aaa;background:#fff}</style></head>
 <body>
 <a href="#main">Skip to content</a>
+<site-nav></site-nav>
+<script>
+customElements.define('site-nav', class extends HTMLElement {
+  connectedCallback() {
+    this.attachShadow({ mode: 'open' }).innerHTML = '<nav><a href="/shop">Shop</a> <a href="/shop/product-1.html">One</a> <a href="/shop/product-2.html">Two</a></nav>';
+  }
+});
+</script>
 <main id="main">
 <h1>Product 2</h1>
 <p class="muted">Low contrast price</p>

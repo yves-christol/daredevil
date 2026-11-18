@@ -7,6 +7,7 @@ runs the CLI and adds AI-assisted review, a human summary and a fix handoff.
 ## Commands
 - `npm run -s audit -- <url> [--max-pages N] [--same-pages prev/report.json]`: writes `reports/<site-slug>/<timestamp>/`
 - `npm run -s diff -- before.json after.json`
+- `npm run -s render -- <reportDir>`: rebuilds `report.md` / `report.html`, including the agent's files if present
 - `npm test` (unit tests + an e2e test against `test/fixtures/site`), `npm run typecheck`
 
 ## Layout
@@ -17,6 +18,14 @@ runs the CLI and adds AI-assisted review, a human summary and a fix handoff.
 - `src/group.ts`: root-cause signatures and grouping (group `id` is stable across runs)
 - `src/score.ts`: scoring model, see the header comment
 - `src/report.ts`: report.json assembly, diff, markdown
+- `src/html.ts`: self-contained HTML report (escapes all site-derived content; must itself stay accessible)
+- `src/consent.ts`: cookie-dialog dismissal ("reject", never "accept")
+
+## When the daredevil subagent returns
+Subagents cannot write report files, so the agent returns its deliverables as text. When its final message arrives:
+1. Take `REPORT_DIR:` from it, and check that the folder exists and contains `report.json`.
+2. For each `<<<FILE name>>> … <<<END FILE>>>` block, write the content verbatim to `<REPORT_DIR>/<name>`. Only accept `assisted.json`, `summary.md` and `handoff.md`. Make sure `assisted.json` parses as JSON.
+3. Run `npm run -s render -- <REPORT_DIR>`, then give the user the brief and the path of `report.html`.
 
 ## Invariants
 - Any change to the scoring formula or constants: bump `SCORING_VERSION` in `src/score.ts`. Changing grouping signatures changes group ids: note it, since diffs across that change show false "fixed/new".

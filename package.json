@@ -8,6 +8,7 @@
   "scripts": {
     "audit": "tsx src/cli.ts audit",
     "diff": "tsx src/cli.ts diff",
+    "render": "tsx src/cli.ts render",
     "test": "node --import tsx --test test/*.test.ts",
     "typecheck": "tsc --noEmit"
   },

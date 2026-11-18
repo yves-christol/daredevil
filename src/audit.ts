@@ -8,6 +8,7 @@ import { inScope, normalizeUrl, pathOf } from './crawl.ts';
 import { groupId, nodeSignature } from './group.ts';
 import { levelOf, principleOf, successCriteria } from './wcag.ts';
 import { imageInventory, keyboardProbe } from './probes.ts';
+import { dismissConsent } from './consent.ts';
 
 export interface AuditRun {
   pages: PageResult[];
@@ -32,6 +33,9 @@ export async function runAudit(config: AuditConfig, reportDir: string, log: Log)
   const seen = new Set<string>();
   const pages: PageResult[] = [];
   let axeVersion = 'unknown';
+  // Once a consent dialog has been seen, keep waiting for it on every page; if the first
+  // page had none, only poll briefly afterwards (saves ~4s per page on sites without one).
+  const consentState = { firstChecked: false, seen: false };
 
   const enqueue = (raw: string) => {
     const u = normalizeUrl(raw, config.keepQuery);
@@ -50,7 +54,7 @@ export async function runAudit(config: AuditConfig, reportDir: string, log: Log)
       const url = queue.shift()!;
       const index = started++;
       log(`[${index + 1}] ${url}`);
-      const { result, links, version } = await scanPage(browser, url, index, config, assetDir);
+      const { result, links, version } = await scanPage(browser, url, index, config, assetDir, consentState);
       if (version) axeVersion = version;
       pages.push(result);
       if (result.status !== 'ok') log(`    ${result.status}: ${result.error}`);
@@ -76,6 +80,7 @@ async function scanPage(
   index: number,
   config: AuditConfig,
   assetDir: string,
+  consentState: { firstChecked: boolean; seen: boolean },
 ): Promise<{ result: PageResult; links: string[]; version?: string }> {
   const base: PageResult = { url, path: pathOf(url), status: 'ok', violations: [], incomplete: [], passes: [] };
   const context = await browser.newContext({ viewport: config.viewport, reducedMotion: 'reduce', userAgent: config.userAgent });
@@ -95,11 +100,20 @@ async function scanPage(
     }
     if (resp && resp.status() >= 400) return { result: { ...base, status: 'error', error: `HTTP ${resp.status()}` }, links: [] };
 
+    let consent: PageResult['consent'];
+    if (config.dismissConsent) {
+      const wait = !consentState.firstChecked || consentState.seen ? 4000 : 800;
+      consent = await dismissConsent(page, config.consentSelector, wait);
+      consentState.firstChecked = true;
+      if (consent.dismissed) consentState.seen = true;
+    }
+
     const links = await page.$$eval('a[href]', (as) => as.map((a) => (a as HTMLAnchorElement).href));
     const axe: AxeResults = await new AxeBuilder({ page }).withTags(config.tags).analyze();
 
     const result: PageResult = {
       ...base,
+      consent,
       violations: axe.violations.map(toRule),
       incomplete: axe.incomplete.map(toRule),
       passes: axe.passes.map((r) => ({ ruleId: r.id, nodeCount: r.nodes.length })),

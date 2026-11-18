@@ -350,3 +350,7 @@ src/report.ts    report.json assembly, diff, markdown rendering
 ```
 
 See `CLAUDE.md` for the project's rules: the scoring versioning, and the constraint on code run inside the browser.
+
+## License
+
+[MIT](LICENSE) © 2026 Yves Christol

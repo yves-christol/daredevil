@@ -1,0 +1,140 @@
+export const SCHEMA_VERSION = '1.0.0';
+
+export type Impact = 'minor' | 'moderate' | 'serious' | 'critical';
+export type Principle = 'perceivable' | 'operable' | 'understandable' | 'robust' | 'best-practice';
+export type Level = 'A' | 'AA' | 'AAA' | 'none';
+
+export interface AuditConfig {
+  startUrl: string;
+  /** Origin + path prefix that bounds the crawl, e.g. https://www.mysite.com/shop */
+  scope: { origin: string; pathPrefix: string };
+  maxPages: number;
+  concurrency: number;
+  viewport: { width: number; height: number };
+  waitMs: number;
+  timeoutMs: number;
+  /** Defaults to the browser UA with "Headless" removed (many sites block headless UAs) + a daredevil token. */
+  userAgent?: string;
+  keepQuery: boolean;
+  tags: string[];
+  keyboardProbe: boolean;
+  imageCapture: boolean;
+  /** When set, the crawl is replaced by this fixed page list (for comparable re-runs). */
+  fixedPages?: string[];
+}
+
+export interface NodeResult {
+  selector: string;
+  html: string;
+  failureSummary?: string;
+  /** Root-cause signature used for grouping (see group.ts). */
+  signature: string;
+  groupId: string;
+  /** Rule-specific data, e.g. colour-contrast values. */
+  data?: Record<string, unknown>;
+}
+
+export interface RuleResult {
+  ruleId: string;
+  impact: Impact | null;
+  description: string;
+  help: string;
+  helpUrl: string;
+  tags: string[];
+  /** WCAG success criteria, e.g. ["1.4.3"] */
+  wcag: string[];
+  level: Level;
+  principle: Principle;
+  nodes: NodeResult[];
+}
+
+export interface KeyboardProbe {
+  tabStops: number;
+  tabbableElements: number;
+  firstStop?: string;
+  hasSkipLink: boolean;
+  /** Elements that receive focus with no visible style change. */
+  noVisibleFocus: { selector: string; html: string }[];
+  /** Element where focus stopped moving, if any. */
+  possibleTrap?: string;
+}
+
+export interface ImageInfo {
+  selector: string;
+  src: string;
+  alt: string;
+  /** Path (relative to report dir) of an element screenshot, for alt-text quality review. */
+  screenshot?: string;
+}
+
+export interface PageResult {
+  url: string;
+  path: string;
+  status: 'ok' | 'error' | 'skipped';
+  error?: string;
+  title?: string;
+  httpStatus?: number;
+  violations: RuleResult[];
+  incomplete: RuleResult[];
+  passes: { ruleId: string; nodeCount: number }[];
+  keyboard?: KeyboardProbe;
+  images?: ImageInfo[];
+  /** Assisted probes that failed on this page (their data is then missing). */
+  probeErrors?: string[];
+  score?: PageScore;
+}
+
+export interface ScoreBreakdown {
+  /** Headline: WCAG A + AA rules only, 0-100, higher is better. */
+  overall: number;
+  byPrinciple: Record<Exclude<Principle, 'best-practice'>, number>;
+  byLevel: { A: number; AA: number };
+  /** Non-WCAG axe best-practice rules; reported, not part of the headline. */
+  bestPractice: number;
+}
+
+export interface PageScore extends ScoreBreakdown {
+  penalty: number;
+}
+
+export interface IssueGroup {
+  id: string;
+  ruleId: string;
+  impact: Impact | null;
+  help: string;
+  description: string;
+  helpUrl: string;
+  wcag: string[];
+  level: Level;
+  principle: Principle;
+  scored: boolean;
+  /** Human-readable root-cause signature (component / colour pair / selector pattern). */
+  signature: string;
+  occurrences: number;
+  pageCount: number;
+  pages: string[];
+  /** Distinct normalised selector patterns in this group (where to look). */
+  patterns: string[];
+  examples: { page: string; selector: string; html: string; failureSummary?: string; data?: Record<string, unknown> }[];
+  /** Site score increase if every node of this group were fixed. Use to prioritise. */
+  estimatedScoreGain: number;
+}
+
+export interface Report {
+  schemaVersion: string;
+  tool: { name: 'daredevil'; version: string; axeVersion: string; scoringVersion: string; browser: string };
+  generatedAt: string;
+  config: AuditConfig;
+  summary: {
+    score: ScoreBreakdown;
+    pagesScanned: number;
+    pagesFailed: number;
+    violations: { groups: number; nodes: number; byImpact: Record<Impact, number> };
+    needsReview: { groups: number; nodes: number };
+  };
+  /** Violations grouped by root cause, sorted by estimatedScoreGain (desc). */
+  issues: IssueGroup[];
+  /** axe "incomplete" results: could not be decided automatically, need human/AI review. Not scored. */
+  needsReview: IssueGroup[];
+  pages: PageResult[];
+}

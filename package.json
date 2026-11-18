@@ -1,0 +1,26 @@
+{
+  "name": "daredevil",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Accessibility auditing: axe-core + Playwright crawler, reproducible scoring, AI-ready reports",
+  "type": "module",
+  "scripts": {
+    "audit": "tsx src/cli.ts audit",
+    "diff": "tsx src/cli.ts diff",
+    "test": "node --import tsx --test test/*.test.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@axe-core/playwright": "4.14.0",
+    "axe-core": "4.14.1",
+    "playwright": "1.65.1"
+  },
+  "devDependencies": {
+    "@types/node": "24.19.2",
+    "tsx": "4.23.15",
+    "typescript": "7.0.2"
+  }
+}

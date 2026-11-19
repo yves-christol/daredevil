@@ -193,11 +193,11 @@ test('a page that redirects to an already-scanned page is skipped as a duplicate
 test('batch: audits each entry into its own history and lists them in batch.json', { timeout: 180_000 }, async () => {
   const { url, server } = await serveFixtures();
   try {
-    const { parseBatchFile, resolveEntries, runBatch } = await import('../src/batch.ts');
+    const { parseBatchFile, resolveEntries, runBatch, applySamePagesFrom } = await import('../src/batch.ts');
     const file = parseBatchFile(`base: ${url}\n/shop Shop\n/nowhere\nhttp://127.0.0.1:1/ Unreachable\n`, 'fixture.txt');
     const entries = resolveEntries(file, { maxPages: 3, waitMs: 0, timeoutMs: 5000, skipImages: true });
     const out = await mkdtemp(join(tmpdir(), 'dd-batch-'));
-    const { batchDir, batch } = await runBatch({ name: 'fixture', source: 'fixture.txt', entries, imageScreenshots: { loggedOut: false, loggedIn: false }, out, log: () => {} });
+    const { batchDir, batch } = await runBatch({ name: 'fixture', source: 'fixture.txt', entries, imageScreenshots: { loggedOut: false, loggedIn: false }, out, log: () => {}, parallel: 2 });
 
     assert.ok(batchDir.startsWith(join(out, '_batches', 'fixture')));
     const saved = JSON.parse(await readFile(join(batchDir, 'batch.json'), 'utf8'));
@@ -226,6 +226,9 @@ test('batch: audits each entry into its own history and lists them in batch.json
 
     // Second run of the same batch name, with one entry: compared with the first, entry by entry.
     const again = resolveEntries(parseBatchFile(`base: ${url}\n/shop Shop\n`, 'fixture.txt'), { maxPages: 3, waitMs: 0, timeoutMs: 5000, skipImages: true });
+    const { warnings } = await applySamePagesFrom(again, 'latest', { out, name: 'fixture' });
+    assert.deepEqual(warnings, []);
+    assert.equal(again[0].options.samePages, join(batchDir, shop.reportDir!, 'report.json'));
     await new Promise((r) => setTimeout(r, 1100)); // batch folders are per second
     const second = await runBatch({ name: 'fixture', source: 'fixture.txt', entries: again, imageScreenshots: { loggedOut: false, loggedIn: false }, out, log: () => {} });
     assert.equal(second.batch.previous?.dir, join('..', batchDir.split('/').pop()!));

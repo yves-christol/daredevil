@@ -6,7 +6,7 @@ runs the CLI and adds AI-assisted review, a human summary and a fix handoff.
 
 ## Commands
 - `npm run -s audit -- <url> [--max-pages N] [--same-pages prev/report.json] [--auth .auth/<host>.json]`: writes `reports/<site-slug>/<timestamp>/` (`<site-slug>_auth` when logged in)
-- `npm run -s batch -- <list.txt|list.json> [--base URL] [audit options]`: one audit per entry, each in its usual `reports/<site-slug>/<timestamp>/`, plus `reports/_batches/<name>/<timestamp>/` with `batch.json`, `index.html` (every score, linking to each `report.html`) and `index.md` (file formats: `src/batch.ts` header)
+- `npm run -s batch -- <list.txt|list.json> [--base URL] [--parallel N] [--same-pages-from <batch.json|dir|latest>] [audit options]`: one audit per entry, each in its usual `reports/<site-slug>/<timestamp>/`, plus `reports/_batches/<name>/<timestamp>/` with `batch.json`, `index.html` (every score, linking to each `report.html`) and `index.md` (file formats: `src/batch.ts` header)
 - `npm run -s render-batch -- <batchDir>`: rebuilds `index.html` / `index.md` from `batch.json`, including the agent's `summary.md` if present
 - `npm run -s login -- <url>`: headed browser, the user logs in by hand, saves the Playwright storage state to `.auth/<host>.json` (0600, git-ignored)
 - `npm run -s diff -- before.json after.json`
@@ -16,7 +16,7 @@ runs the CLI and adds AI-assisted review, a human summary and a fix handoff.
 ## Layout
 - `src/cli.ts`: argument parsing, the screenshot question, command dispatch
 - `src/run.ts`: one audit end to end (option checks, config, crawl, report files); shared by `audit` and `batch`
-- `src/batch.ts`: batch file parsing, option precedence, pre-flight checks, sequential run, `batch.json`, shared root causes (same group id in 2+ audits), comparison with the previous complete batch of the same name
+- `src/batch.ts`: batch file parsing, option precedence, pre-flight checks, run pool (`--parallel`, one audit per origin at a time), `--same-pages-from`, `batch.json`, shared root causes (same group id in 2+ audits), comparison with the previous complete batch of the same name
 - `src/crawl.ts`: URL normalisation and scope (`/shop` matches `/shop/**`, not `/shopping`)
 - `src/audit.ts`: browser and BFS crawl, axe scan per page, conversion of axe results
 - `src/probes.ts`: keyboard probe and image inventory (assisted, not scored)

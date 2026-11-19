@@ -19,7 +19,7 @@ import {
   withScheme,
   writeFixPrompt,
 } from './run.ts';
-import { batchName, parseBatchFile, preflight, renderBatch, resolveEntries, runBatch, type EntrySettings } from './batch.ts';
+import { applySamePagesFrom, batchName, parseBatchFile, preflight, renderBatch, resolveEntries, runBatch, type EntrySettings } from './batch.ts';
 
 const USAGE = `daredevil — accessibility audit (axe-core + Playwright)
 
@@ -66,8 +66,13 @@ Batch:
                          { "url", "label", ...settings }] }. Settings use the option names in
                          camelCase (maxPages, exclude, auth, samePages, viewport: "1280x800", ...)
   --base <url>           Resolve /paths against this origin (overrides the file's base)
+  --parallel <n>         Audits run at once (default 1). Never two on the same origin at once: for
+                         one site, raise --concurrency (pages in parallel) instead
+  --same-pages-from <b>  Re-scan, for each entry, exactly the pages its scope scanned in batch <b>:
+                         a batch.json, its folder, or 'latest' (last complete batch of this name).
+                         For a strict before/after comparison. An entry's own samePages wins
   Audit options apply to every entry: defaults < file "defaults" < command line < entry settings;
-  --exclude patterns add up. Entries run one after another; a failing entry is recorded and the
+  --exclude patterns add up. A failing entry is recorded and the
   batch goes on. Every entry is checked (URLs, --exclude, sessions) before anything is crawled.
   With logged-in entries, the screenshot question is asked once for the whole batch.
 
@@ -195,12 +200,20 @@ async function audit(argv: string[]) {
 
 async function batch(argv: string[]) {
   if (argv.includes('--help') || argv.includes('-h')) return void process.stdout.write(USAGE);
-  const { values, positionals } = parseArgs({ args: argv, allowPositionals: true, options: { ...AUDIT_ARGS, base: { type: 'string' } } });
+  const { values, positionals } = parseArgs({ args: argv, allowPositionals: true, options: { ...AUDIT_ARGS, base: { type: 'string' }, parallel: { type: 'string' }, 'same-pages-from': { type: 'string' } } });
   const source = positionals[0];
   if (!source) throw new Error('missing <batch file>\n\n' + USAGE);
   if (values['same-pages']) throw new Error('--same-pages applies to one audit: set "samePages" on the entry in a .json batch file');
   const file = parseBatchFile(await readFile(source, 'utf8'), source);
   const entries = resolveEntries(file, settingsFromArgs(values), values.base);
+  const name = batchName(file, source);
+  const parallel = values.parallel === undefined ? 1 : Number(values.parallel);
+  if (!Number.isInteger(parallel) || parallel < 1) throw new Error(`--parallel: expected a whole number of 1 or more, got: ${values.parallel}`);
+  if (values['same-pages-from']) {
+    const { source: from, warnings } = await applySamePagesFrom(entries, values['same-pages-from'], { out: values.out, name });
+    console.error(`same pages as ${from}`);
+    for (const w of warnings) console.error(`  ${w}`);
+  }
 
   const errors = await preflight(entries);
   if (errors.length) throw new Error(`batch not started, ${errors.length} problem(s):\n- ${errors.join('\n- ')}`);
@@ -213,8 +226,8 @@ async function batch(argv: string[]) {
     loggedIn: anyLoggedIn ? await screenshotChoice(true, values.images, values['no-images']) : false,
   };
 
-  console.error(`Batch: ${entries.length} audit(s)`);
-  const { batchDir, batch: b } = await runBatch({ name: batchName(file, source), source, entries, imageScreenshots, out: values.out, log });
+  console.error(`Batch: ${entries.length} audit(s)${parallel > 1 ? `, up to ${parallel} at once (one per origin)` : ''}`);
+  const { batchDir, batch: b } = await runBatch({ name, source, entries, imageScreenshots, out: values.out, log, parallel });
   console.log(
     JSON.stringify(
       {

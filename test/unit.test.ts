@@ -283,3 +283,60 @@ test('batch: shared root causes, previous batch, change column', async () => {
   assert.match(md, /\| -1\* \|/);
   assert.match(md, /## Shared root causes[\s\S]*\| `rule-x` Help <x> \(`sig <x>`\) \| 3 \/ 3 \| 6 \| A \+1, B \+2, C \+0\.5 \|/);
 });
+
+test('batch: parallel pool never runs two audits of one origin at once', async () => {
+  const { runPool } = await import('../src/batch.ts');
+  const items = ['a1', 'a2', 'b1', 'c1', 'b2', 'd1'];
+  let active = 0, maxActive = 0;
+  const busy = new Set<string>();
+  const started: string[] = [];
+  await runPool(items, 3, (x) => x[0], async (x) => {
+    assert.ok(!busy.has(x[0]), `two '${x[0]}' at once`);
+    busy.add(x[0]);
+    started.push(x);
+    maxActive = Math.max(maxActive, ++active);
+    await new Promise((r) => setTimeout(r, x === 'a1' ? 30 : 5));
+    active--;
+    busy.delete(x[0]);
+  });
+  assert.equal(maxActive, 3);
+  assert.deepEqual(started.slice(0, 3), ['a1', 'b1', 'c1'], 'a2 waits for a1; the next free origins start');
+  assert.deepEqual([...started].sort(), [...items].sort(), 'every item runs once');
+  assert.ok(started.indexOf('a2') > started.indexOf('b2'), 'a2 waited for a1 while others went ahead');
+
+  const order: number[] = [];
+  await runPool([1, 2, 3], 1, String, async (x) => void order.push(x));
+  assert.deepEqual(order, [1, 2, 3], 'parallel 1 keeps file order');
+});
+
+test('batch: --same-pages-from maps each entry to its scope in another batch', async () => {
+  const { applySamePagesFrom, resolveEntries, parseBatchFile } = await import('../src/batch.ts');
+  const { mkdtemp, mkdir, writeFile } = await import('node:fs/promises');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const out = await mkdtemp(join(tmpdir(), 'dd-sp-'));
+  const dir = join(out, '_batches', 'q', '20261101-000000');
+  await mkdir(dir, { recursive: true });
+  const prev = {
+    complete: true, generatedAt: 'x', summary: {},
+    entries: [
+      { url: 'https://s.com/a', label: 'A', loggedIn: false, status: 'ok', reportDir: '../../../s.com_a/1' },
+      { url: 'https://s.com/b', label: 'B', loggedIn: false, status: 'no-pages', reportDir: '../../../s.com_b/1' },
+    ],
+  };
+  await writeFile(join(dir, 'batch.json'), JSON.stringify(prev));
+  const make = () => resolveEntries(parseBatchFile('{"base":"https://s.com","entries":["/a","/b","/c",{"url":"/d","samePages":"own.json"}]}', 'q.json'), {});
+
+  const e = make();
+  const r = await applySamePagesFrom(e, dir, { out, name: 'q' });
+  assert.equal(e[0].options.samePages, join(dir, '../../../s.com_a/1', 'report.json'));
+  assert.equal(e[1].options.samePages, undefined);
+  assert.equal(e[3].options.samePages, 'own.json', "an entry's own samePages wins");
+  assert.deepEqual(r.warnings, ['s.com/b: not scored in that batch (no-pages), crawled normally', 's.com/c: not in that batch, crawled normally']);
+
+  const latest = make();
+  await applySamePagesFrom(latest, 'latest', { out, name: 'q' });
+  assert.equal(latest[0].options.samePages, e[0].options.samePages, "'latest' finds the last complete batch of this name");
+  await assert.rejects(applySamePagesFrom(make(), 'latest', { out, name: 'other' }), /no complete batch named "other"/);
+  await assert.rejects(applySamePagesFrom(make(), join(out, 'nope'), { out, name: 'q' }), /no such batch file/);
+});

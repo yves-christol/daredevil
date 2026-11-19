@@ -1,6 +1,6 @@
 import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
-import { basename, extname, join, relative } from 'node:path';
+import { basename, dirname, extname, join, relative } from 'node:path';
 import type { Impact, IssueGroup, Report, ScoreBreakdown } from './types.ts';
 import { diffReports } from './report.ts';
 import { scopeFromUrl } from './crawl.ts';
@@ -432,6 +432,79 @@ export interface RunBatchOptions {
   imageScreenshots: { loggedOut: boolean; loggedIn: boolean };
   out: string;
   log: (m: string) => void;
+  /** Audits run at once (default 1). Never two on the same origin at the same time. */
+  parallel?: number;
+}
+
+/**
+ * Run `fn` over items, at most `parallel` at once, never two items with the same key at once
+ * (key = origin: parallel requests to one host are what trips bot protection). Items start in
+ * order, skipping over those whose key is busy. `fn` must not throw.
+ */
+export async function runPool<T>(items: T[], parallel: number, keyOf: (t: T) => string, fn: (t: T, index: number) => Promise<void>): Promise<void> {
+  const pending = items.map((_, i) => i);
+  const active = new Set<Promise<void>>();
+  const busy = new Set<string>();
+  const limit = Math.max(1, Math.floor(parallel) || 1);
+  while (pending.length || active.size) {
+    while (active.size < limit) {
+      const k = pending.findIndex((i) => !busy.has(keyOf(items[i])));
+      if (k < 0) break;
+      const i = pending.splice(k, 1)[0];
+      const key = keyOf(items[i]);
+      busy.add(key);
+      const p: Promise<void> = fn(items[i], i).finally(() => {
+        active.delete(p);
+        busy.delete(key);
+      });
+      active.add(p);
+    }
+    if (active.size) await Promise.race(active);
+  }
+}
+
+const originOf = (url: string) => {
+  try {
+    return new URL(url).origin;
+  } catch {
+    return url;
+  }
+};
+
+/**
+ * --same-pages-from: give each entry the report.json its scope produced in another batch
+ * (a batch.json, its folder, or "latest" for the last complete batch of this name), so exactly
+ * the same pages are re-scanned. An entry's own samePages wins. Returns warnings for entries
+ * that will be crawled normally.
+ */
+export async function applySamePagesFrom(entries: BatchEntry[], from: string, ctx: { out: string; name: string }): Promise<{ source: string; warnings: string[] }> {
+  let dir: string;
+  let batch: BatchReport;
+  if (from === 'latest') {
+    const found = await findPreviousBatch(join(ctx.out, '_batches', batchSlug(ctx.name)), '\uffff');
+    if (!found) throw new Error(`--same-pages-from latest: no complete batch named "${ctx.name}" in ${join(ctx.out, '_batches')}`);
+    ({ dir, batch } = found);
+  } else {
+    const file = from.endsWith('.json') ? from : join(from, 'batch.json');
+    if (!existsSync(file)) throw new Error(`--same-pages-from: no such batch file: ${file}`);
+    dir = dirname(file);
+    try {
+      batch = JSON.parse(await readFile(file, 'utf8'));
+    } catch (e) {
+      throw new Error(`--same-pages-from: ${file}: ${(e as Error).message}`);
+    }
+    if (!Array.isArray(batch.entries)) throw new Error(`--same-pages-from: ${file} is not a batch.json`);
+  }
+  const byKey = new Map(batch.entries.map((e) => [entryKey(e), e]));
+  const warnings: string[] = [];
+  for (const e of entries) {
+    if (e.options.samePages) continue;
+    const p = byKey.get(scopeKey(e.url, !!e.options.auth));
+    if (!p) warnings.push(`${e.label}: not in that batch, crawled normally`);
+    else if (p.status !== 'ok' || !p.reportDir) warnings.push(`${e.label}: not scored in that batch (${p.status}), crawled normally`);
+    else e.options.samePages = join(dir, p.reportDir, 'report.json');
+  }
+  return { source: join(dir, 'batch.json'), warnings };
 }
 
 /** Run entries one after another. A failing entry is recorded and the batch goes on. batch.json is rewritten after each entry. */
@@ -460,21 +533,29 @@ export async function runBatch(o: RunBatchOptions): Promise<{ batchDir: string; 
     for (const e of batch.entries) if (!prevKeys.has(entryKey(e))) e.newSincePrevious = true;
   }
   // Rewritten after each entry: the page shows progress, and an interrupted batch keeps what was done.
-  const save = async () => {
-    batch.summary = batchSummary(batch.entries);
-    const shared = sharedIssues(batch.entries, issues);
-    if (shared.length) batch.shared = shared;
-    await writeBatchFiles(batchDir, batch);
-  };
+  // Saves are chained so parallel entries never write the files at the same time.
+  let saving = Promise.resolve();
+  const save = () =>
+    (saving = saving.then(async () => {
+      batch.summary = batchSummary(batch.entries);
+      const shared = sharedIssues(batch.entries, issues);
+      if (shared.length) batch.shared = shared;
+      await writeBatchFiles(batchDir, batch);
+    }));
   await save();
 
-  for (const [i, e] of o.entries.entries()) {
-    o.log(`\n[${i + 1}/${o.entries.length}] ${e.label}`);
+  const n = o.entries.length;
+  const parallel = o.parallel ?? 1;
+  await runPool(o.entries, parallel, (e) => originOf(e.url), async (e, i) => {
+    const tag = `[${i + 1}/${n}]`;
+    // With several audits at once, prefix every line so the log stays readable.
+    const log = parallel > 1 ? (m: string) => o.log(m.split('\n').map((l) => (l ? `${tag} ${l}` : l)).join('\n')) : o.log;
+    o.log(`\n${tag} ${e.label}`);
     const started = Date.now();
     try {
       const imageScreenshots = e.options.auth ? o.imageScreenshots.loggedIn : o.imageScreenshots.loggedOut;
-      const config = await buildAuditConfig({ ...e.options, imageScreenshots, out: o.out }, o.log);
-      const result = await runSingleAudit(config, o.out, o.log);
+      const config = await buildAuditConfig({ ...e.options, imageScreenshots, out: o.out }, log);
+      const result = await runSingleAudit(config, o.out, log);
       const r: BatchEntryResult = { ...entryResult(e, result, batchDir), durationMs: Date.now() - started };
       if (prev && !prevKeys.has(entryKey(r))) r.newSincePrevious = true;
       if (prev) {
@@ -483,14 +564,14 @@ export async function runBatch(o: RunBatchOptions): Promise<{ batchDir: string; 
       }
       batch.entries[i] = r;
       issues[i] = result.report.issues;
-      o.log(`[${i + 1}/${o.entries.length}] ${r.status === 'ok' ? `score ${r.score!.overall}` : r.status}`);
+      o.log(`${tag} ${r.status === 'ok' ? `score ${r.score!.overall}` : r.status}`);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       batch.entries[i] = { ...batch.entries[i], status: 'error', error: message, durationMs: Date.now() - started };
-      o.log(`[${i + 1}/${o.entries.length}] error: ${message}`);
+      o.log(`${tag} error: ${message}`);
     }
     await save();
-  }
+  });
   batch.complete = true;
   await save();
   return { batchDir, batch };

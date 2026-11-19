@@ -7,13 +7,14 @@
 Give daredevil a URL, optionally with a path (`https://www.mysite.com/shop`), and you get:
 
 1. **A score from 0 to 100.** It is reproducible and fine-grained enough to show progress after each fix, and comparable between websites.
-2. **An audit report** in two layers: a human-readable summary, and a structured list of anomalies grouped by root cause and ranked by impact. Another AI can build a fix plan directly from it.
+2. **An audit report** in two layers: a human-readable summary, and a structured list of anomalies grouped by root cause and ranked by impact.
+3. **A ready-to-use fix prompt.** Paste it into an AI coding agent working in the site's codebase: it lists every defect with its evidence, groups them by category, and asks for one merge request per category, each verified by a re-audit.
 
 daredevil has two parts:
 
 | Part | What it does | Deterministic? |
 |---|---|---|
-| **Engine**: a TypeScript CLI ([Playwright](https://playwright.dev) + [axe-core](https://github.com/dequelabs/axe-core)) | Crawls the pages, runs the WCAG checks, scores, groups and writes `report.json`, `report.md` and `report.html` | Yes. The score comes only from here |
+| **Engine**: a TypeScript CLI ([Playwright](https://playwright.dev) + [axe-core](https://github.com/dequelabs/axe-core)) | Crawls the pages, runs the WCAG checks, scores, groups and writes `report.json`, `report.md`, `report.html` and `fix-prompt.md` | Yes. The score comes only from here |
 | **Agent**: a Claude Code subagent (`.claude/agents/daredevil.md`) | Runs the engine, reviews what automation can't decide (alt-text quality, keyboard behaviour, undecided items) and returns `summary.md`, `assisted.json` and `handoff.md`, which the calling session writes and renders into `report.html` | No. It is AI judgement, kept separate from the score |
 
 ---

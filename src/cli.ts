@@ -2,6 +2,7 @@
 import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { parseArgs } from 'node:util';
+import { createInterface } from 'node:readline/promises';
 import { fileURLToPath } from 'node:url';
 import { basename, dirname, join, resolve } from 'node:path';
 import type { AuditConfig, Report } from './types.ts';
@@ -38,13 +39,16 @@ Audit options:
   --keep-consent         Do not dismiss cookie-consent dialogs (audit them as shown)
   --consent-selector <s> CSS selector of the consent 'reject' button, if not auto-detected
   --skip-keyboard        Skip the keyboard probe
-  --skip-images          Skip image screenshots for alt-text review
+  --skip-images          Skip the image inventory (alt texts and screenshots) for alt-text review
   --exclude <regex>      Never visit URLs matching this (case-insensitive; repeatable)
   --auth <file>          Audit logged in, with a session saved by 'daredevil login'. Logout and
                          account-changing links are excluded, pages that land on a login page are marked auth-lost, and
-                         the crawl stops after 2 in a row. Image screenshots are off (personal data)
+                         the crawl stops after 2 in a row. Screenshots of images can show personal
+                         data, so you are asked whether to take them (or pass --images / --no-images);
+                         the alt-text inventory is collected either way
   --logged-in-check <s>  CSS selector visible only when logged in (stricter session check)
-  --images               With --auth: capture image screenshots anyway
+  --images               With --auth: take image screenshots (you accept they may show personal data)
+  --no-images            No image screenshots (alt-text inventory only)
   --out <dir>            Reports root (default ./reports)
 
 Login options:
@@ -56,6 +60,37 @@ Login options:
   The session is saved once you are back on the site after logging in (or press Enter /
   close the window).
 `;
+
+/**
+ * Whether to screenshot images. Logged out: yes unless --no-images. Logged in, screenshots can
+ * show personal data from the account, so it is the user's decision: --images / --no-images, or
+ * an explicit question in a terminal. Without a terminal (e.g. run by an agent) we refuse to guess.
+ */
+async function screenshotChoice(loggedIn: boolean, yes: boolean, no: boolean): Promise<boolean> {
+  if (yes && no) throw new Error('--images and --no-images are mutually exclusive');
+  if (yes || no) return yes;
+  if (!loggedIn) return true;
+  if (!process.stdin.isTTY || !process.stderr.isTTY) {
+    throw new Error(
+      'logged-in audit: decide whether images may be screenshotted. Screenshots of account pages can show personal data\n' +
+        '(names, photos, documents) and are saved in the report. Re-run with --images (take them) or --no-images (alt-text\n' +
+        'inventory only).',
+    );
+  }
+  const rl = createInterface({ input: process.stdin, output: process.stderr });
+  try {
+    const answer = await rl
+      .question(
+        'Logged-in audit: take screenshots of the images for the alt-text review?\n' +
+          'They are saved in the report and can show personal data from the account (names, photos, documents).\n' +
+          'Without them, alt texts are still listed and reviewed from text only. Take screenshots? [y/N] ',
+      )
+      .catch(() => ''); // Ctrl+D / closed input: no
+    return /^\s*(y|yes|o|oui)\s*$/i.test(answer);
+  } finally {
+    rl.close();
+  }
+}
 
 async function main() {
   const [cmd, ...rest] = process.argv.slice(2);
@@ -90,6 +125,7 @@ async function audit(argv: string[]) {
       auth: { type: 'string' },
       'logged-in-check': { type: 'string' },
       images: { type: 'boolean', default: false },
+      'no-images': { type: 'boolean', default: false },
       out: { type: 'string', default: 'reports' },
     },
   });
@@ -104,6 +140,7 @@ async function audit(argv: string[]) {
     if (life.expired) throw new Error(`session in ${authFile}: ${life.text}\nLog in again with: npm run -s login -- ${startUrl}`);
     console.error(`session: ${life.text}`);
   }
+  const imageScreenshots = values['skip-images'] ? false : await screenshotChoice(!!authFile, values.images!, values['no-images']!);
   for (const e of values.exclude ?? []) {
     try {
       new RegExp(e);
@@ -144,7 +181,8 @@ async function audit(argv: string[]) {
     keyboardProbe: !values['skip-keyboard'],
     dismissConsent: !values['keep-consent'],
     consentSelector: values['consent-selector'],
-    imageCapture: !values['skip-images'] && (!authFile || values.images!),
+    imageInventory: !values['skip-images'],
+    imageScreenshots,
     fixedPages,
     exclude: [...(values.exclude ?? []), ...(authFile ? [LOGOUT_URL.source] : [])],
     auth: authFile ? { stateFile: authFile, loggedInCheck: values['logged-in-check'] } : undefined,

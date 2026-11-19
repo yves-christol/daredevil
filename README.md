@@ -79,7 +79,7 @@ npm run -s audit -- https://espace-client.orange.fr/ --auth .auth/espace-client.
 - The session is the Playwright storage state (cookies and localStorage), saved to `.auth/<host>.json` with mode 0600. `.auth/` is git-ignored. Anyone with this file can use the account until the session expires: delete it when you are done.
 - **Logout links are never followed** (`logout`, `sign-out`, `déconnexion`…), nor known account-changing flows (`retirer`, `confirmation`, `changer-iban`). Use `--exclude '<regex>'` for other links with side effects (cancel, delete, unsubscribe).
 - **A lost session is detected.** A page that lands on a login page (another origin, or a `/login`-like path) is marked `auth-lost`, not scored, and the crawl stops after 2 in a row. Pass `--logged-in-check '<css>'` (for example the account menu) for a stricter check. Session cookies the site rotates during the crawl carry over to the next pages.
-- **Personal data.** Account pages show names, addresses and contract numbers, which end up in HTML snippets. Image screenshots are therefore off by default (`--images` turns them on), and the reports carry a "Logged-in audit" warning. Review them before sharing.
+- **Personal data.** Account pages show names, addresses and contract numbers, which end up in HTML snippets. Image screenshots are therefore your decision: the audit asks whether to take them (or pass `--images` / `--no-images`; without a terminal it refuses to guess). The alt-text inventory is collected either way, and the reports carry a "Logged-in audit" warning. Review them before sharing.
 - Logged-in runs are stored under `reports/<slug>_auth/`, so they are never compared with logged-out runs of the same URL.
 
 ---
@@ -382,11 +382,12 @@ npm run -s audit -- <url> [options]
   --keep-consent         Do not dismiss cookie-consent dialogs (audit them as shown)
   --consent-selector <s> CSS selector of the consent 'reject' button, if not auto-detected
   --skip-keyboard        Skip the keyboard probe
-  --skip-images          Skip image screenshots for alt-text review
+  --skip-images          Skip the image inventory (alt texts and screenshots) for alt-text review
   --exclude <regex>      Never visit URLs matching this (case-insensitive; repeatable)
   --auth <file>          Audit logged in, with a session saved by 'login'
   --logged-in-check <s>  CSS selector visible only when logged in (stricter session check)
-  --images               With --auth: capture image screenshots anyway
+  --images               With --auth: take image screenshots (you accept they may show personal data)
+  --no-images            No image screenshots (alt-text inventory only)
   --out <dir>            Reports root (default ./reports)
 
 npm run -s login -- <url> [options]  open a browser, log in by hand, save the session

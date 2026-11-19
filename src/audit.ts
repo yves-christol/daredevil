@@ -33,7 +33,7 @@ type Log = (msg: string) => void;
 
 export async function runAudit(config: AuditConfig, reportDir: string, log: Log): Promise<AuditRun> {
   const assetDir = `${reportDir}/assets`;
-  if (config.imageCapture) await mkdir(assetDir, { recursive: true });
+  if (config.imageInventory && config.imageScreenshots) await mkdir(assetDir, { recursive: true });
 
   const auth: AuthSession | undefined = config.auth
     ? { state: await loadAuthState(config.auth.stateFile), loggedInCheck: config.auth.loggedInCheck }
@@ -175,9 +175,10 @@ async function scanPage(
       return undefined;
     };
     if (config.keyboardProbe) result.keyboard = await keyboardProbe(page).catch(probeError('keyboard'));
-    if (config.imageCapture) {
+    if (config.imageInventory) {
       const prefix = `p${String(index + 1).padStart(3, '0')}-${createHash('sha1').update(url).digest('hex').slice(0, 6)}`;
-      result.images = await imageInventory(page, assetDir, prefix).catch(probeError('images'));
+      const shots = config.imageScreenshots ? { assetDir, assetPrefix: prefix } : undefined;
+      result.images = await imageInventory(page, shots).catch(probeError('images'));
     }
     // Carry rotated session cookies over to the next pages.
     if (auth) auth.state = await context.storageState().catch(() => auth.state);

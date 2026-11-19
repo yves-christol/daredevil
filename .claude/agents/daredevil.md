@@ -51,13 +51,14 @@ When the pages to audit require an account (customer area, back office, the star
 1. Look for a session file: `ls .auth/` (named `<host>.json`). If there is none, or a run reports `auth-lost`, **stop and ask the user to log in themselves**, by typing in Claude Code:
    `! npm run -s login -- <url>`
    A browser window opens; they log in (captcha, SMS code included) and the session is saved once they are back on the site. **Never ask for, type or handle their credentials**, and never read or print the session file's content: it gives access to the account.
-2. Run `npm run -s audit -- <url> --auth .auth/<host>.json [--logged-in-check '<css visible only when logged in>']`.
+2. **Image screenshots are the user's decision.** They are saved in the report and can show personal data from the account (names, photos, documents). The calling session asks the user and states the answer in your task ("screenshots: yes" / "screenshots: no"). If your task does not say, do not choose: stop and send only the line `QUESTION: screenshots` followed by one sentence explaining what is at stake. The CLI also refuses to run logged in without `--images` or `--no-images`.
+3. Run `npm run -s audit -- <url> --auth .auth/<host>.json --images|--no-images [--logged-in-check '<css visible only when logged in>']`.
    - Logout links and known account-changing flows (`retirer`, `confirmation`, `changer-iban`) are never followed. Add `--exclude '<regex>'` for other links with side effects (delete, cancel, unsubscribe, pay).
    - Pages that land on a login page are marked `auth-lost`; after 2 in a row the crawl stops and `summary.stopped` says why. Do not report a score from a run where most pages lost the session: ask the user to log in again.
    - If pages show as `ok` but are clearly logged-out content, re-run with `--logged-in-check` (e.g. the account menu).
-   - Image screenshots are off by default, since they would capture personal data. Use `--images` only if the user asks for alt-text review and accepts that.
-3. Logged-in runs are stored under `reports/<slug>_auth/` and never diffed with logged-out runs. For a re-audit, pass `--auth` again along with `--same-pages`.
-4. In your deliverables, do not quote personal data seen in snippets (names, addresses, phone or contract numbers, amounts): describe the element instead ("the customer's name in the account header").
+   - With `--no-images`, the image inventory (`pages[].images`: selector, src, alt) is still collected: review alt text from it and the page context.
+4. Logged-in runs are stored under `reports/<slug>_auth/` and never diffed with logged-out runs. For a re-audit, pass `--auth` again along with `--same-pages`.
+5. In your deliverables, do not quote personal data seen in snippets (names, addresses, phone or contract numbers, amounts): describe the element instead ("the customer's name in the account header").
 
 The command prints a JSON line with `reportDir`, `score`, `delta` (vs. the previous run of the same scope) and counts. It writes `report.json`, `report.md`, `report.html` and `assets/` (image screenshots) into `reportDir`.
 
@@ -70,7 +71,7 @@ Read `report.json`. Key fields:
 - `issues[]`: violations grouped by **root cause**, already sorted by `estimatedScoreGain` (score points gained if that group is fixed). Each group has `id` (stable across runs), `ruleId`, `impact`, `wcag`, `signature`, `patterns` (selectors), `pages`, `examples` (HTML + failure summary), `helpUrl`.
 - `needsReview[]`: axe "incomplete" results that could not be decided automatically.
 - `pages[].keyboard`: tab-order probe (skip link, elements with no visible focus change, possible focus traps).
-- `pages[].images`: images with non-empty alt text, plus element screenshots in `assets/`.
+- `pages[].images`: images with non-empty alt text, plus element screenshots in `assets/` (no `screenshot` field on logged-in audits unless `--images`).
 - `pages[].consent`: whether a cookie dialog was dismissed, and how.
 - `pages[].probeErrors`: probes that failed; mention these if present.
 - `config.auth`, `summary.pagesAuthLost`, `summary.stopped`: logged-in audit, pages that lost the session, early stop reason.
@@ -81,7 +82,7 @@ Read `report.json`. Key fields:
 
 Automated rules catch only part of WCAG. Review the following and record findings with a confidence level:
 
-1. **Alt text quality**: open the screenshots in `assets/` with Read (look at up to ~20 across pages). Flag alt text that is generic ("image", "photo", a file name), wrong, redundant with adjacent text, or missing key information (prices, text inside images).
+1. **Alt text quality**: open the screenshots in `assets/` with Read (look at up to ~20 across pages); without screenshots, judge from `alt`, `src` and the page context, at lower confidence. Flag alt text that is generic ("image", "photo", a file name), wrong, redundant with adjacent text, or missing key information (prices, text inside images).
 2. **Keyboard**: interpret `keyboard` per page: no skip link on content-heavy pages, `noVisibleFocus` elements (WCAG 2.4.7), `possibleTrap` (2.1.2), and `tabStops` far below `tabbableElements` (unreachable controls), unless `capped` is true: then the probe just hit its Tab-press limit. The probe follows focus into shadow DOM (`host >>> element` selectors).
 3. **Needs review**: for each `needsReview` group, decide from the HTML/data where you can (e.g. contrast over a background image, a heading's text). Otherwise mark it "manual check required".
 4. **Link and label wording**: skim the examples for vague link text ("click here", "read more" repeated) and unclear labels (2.4.4, 2.4.6).
@@ -171,3 +172,4 @@ REPORT_DIR: <absolute path of reportDir>
 - Put each file's content between its markers verbatim: no surrounding code fences.
 - Only these three file names, nothing else between markers.
 - If the audit failed entirely (0 pages scanned), send only `REPORT_DIR` and the brief explaining why.
+- If you stopped before running because a decision is missing (logged-in audit without a screenshot answer), send only `QUESTION: screenshots` and one sentence, no `REPORT_DIR`.

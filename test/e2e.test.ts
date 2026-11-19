@@ -20,7 +20,7 @@ test('audits the /shop subtree of the fixture site', { timeout: 120_000 }, async
       startUrl, scope: scopeFromUrl(startUrl), maxPages: 10, concurrency: 2,
       viewport: { width: 1280, height: 800 }, waitMs: 0, timeoutMs: 15000, keepQuery: false,
       tags: ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa', 'best-practice'],
-      keyboardProbe: true, imageCapture: false, dismissConsent: true,
+      keyboardProbe: true, imageInventory: false, imageScreenshots: false, dismissConsent: true,
     };
     const dir = await mkdtemp(join(tmpdir(), 'dd-'));
     const run = await runAudit(config, dir, () => {});
@@ -79,7 +79,7 @@ test('audits the /shop subtree of the fixture site', { timeout: 120_000 }, async
 const baseConfig = (startUrl: string): AuditConfig => ({
   startUrl, scope: scopeFromUrl(startUrl), maxPages: 10, concurrency: 2,
   viewport: { width: 1280, height: 800 }, waitMs: 0, timeoutMs: 15000, keepQuery: false,
-  tags: ['wcag2a', 'wcag2aa'], keyboardProbe: false, imageCapture: false, dismissConsent: false,
+  tags: ['wcag2a', 'wcag2aa'], keyboardProbe: false, imageInventory: false, imageScreenshots: false, dismissConsent: false,
 });
 
 test('login saves a session, and a logged-in audit crawls the account without logging out', { timeout: 120_000 }, async () => {
@@ -109,6 +109,7 @@ test('login saves a session, and a logged-in audit crawls the account without lo
     const startUrl = `${url}/account`;
     const config: AuditConfig = {
       ...baseConfig(startUrl),
+      imageInventory: true, // the CLI default with --auth: inventory on, screenshots off
       exclude: [LOGOUT_URL.source],
       auth: { stateFile, loggedInCheck: '#account-menu' },
     };
@@ -117,14 +118,18 @@ test('login saves a session, and a logged-in audit crawls the account without lo
     assert.deepEqual(run.pages.map((p) => [p.path, p.status]), [['/account/home', 'ok'], ['/account/invoices.html', 'ok']]);
     assert.equal(run.pages[0].redirectedFrom, `${url}/account`);
     assert.equal(run.stopped, undefined);
+    // images are inventoried when logged in, but not screenshotted (personal data)
+    assert.deepEqual(run.pages[1].images?.map((i) => [i.alt, i.screenshot]), [['Invoice logo', undefined]]);
+    await assert.rejects(stat(join(dir, 'assets')), 'no screenshot folder for a logged-in audit');
 
     const report = buildReport(config, run.pages, { version: 'test', axeVersion: run.axeVersion, browser: run.browser });
     assert.equal(report.summary.pagesAuthLost, 0);
     assert.ok(report.issues.some((g) => g.ruleId === 'image-alt'));
     assert.ok(!JSON.stringify(report).includes('dd_session'), 'session content must not leak into the report');
     assert.match(renderHtml(report), /Logged-in audit/);
+    assert.match(renderHtml(report), /id="images-h"[\s\S]*Invoice logo/);
     assert.match(reportMarkdown(report), /Logged-in audit/);
-    assert.match(fixPromptMarkdown(report), /--auth <session file for that site> --logged-in-check '#account-menu'/);
+    assert.match(fixPromptMarkdown(report), /--auth <session file for that site> --no-images --logged-in-check '#account-menu'/);
 
     // the same scope audited logged out is not comparable
     const anon = buildReport(baseConfig(startUrl), run.pages, { version: 'test', axeVersion: run.axeVersion, browser: run.browser });

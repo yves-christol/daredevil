@@ -22,7 +22,10 @@ export interface AuditConfig {
   dismissConsent: boolean;
   /** Extra CSS selector of a consent 'reject' control, tried before the built-in list. */
   consentSelector?: string;
-  imageCapture: boolean;
+  /** Inventory of images with alt text (selector, src, alt), for the AI alt-text review. */
+  imageInventory: boolean;
+  /** Element screenshots of those images. Off by default for logged-in audits (personal data). */
+  imageScreenshots: boolean;
   /** When set, the crawl is replaced by this fixed page list (for comparable re-runs). */
   fixedPages?: string[];
   /** URL patterns (regex sources, case-insensitive) never enqueued. */

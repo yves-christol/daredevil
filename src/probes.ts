@@ -114,8 +114,16 @@ export async function keyboardProbe(page: Page): Promise<KeyboardProbe> {
   return { tabStops, capped, tabbableElements, firstStop, hasSkipLink, noVisibleFocus, possibleTrap };
 }
 
-/** Inventory of images with alt text, with element screenshots so an AI can judge alt quality. */
-export async function imageInventory(page: Page, assetDir: string, assetPrefix: string, max = 6): Promise<ImageInfo[]> {
+/**
+ * Inventory of images with alt text, so an AI can judge alt quality. With `screenshots`,
+ * each image also gets an element screenshot; without (logged-in audits by default, since
+ * account pages show personal data), only selector, src and alt are kept.
+ */
+export async function imageInventory(
+  page: Page,
+  screenshots?: { assetDir: string; assetPrefix: string },
+  max = 6,
+): Promise<ImageInfo[]> {
   const handles = await page.$$('img[alt]:not([alt=""]), [role=img][aria-label]');
   const out: ImageInfo[] = [];
   for (const h of handles) {
@@ -127,13 +135,15 @@ export async function imageInventory(page: Page, assetDir: string, assetPrefix: 
       alt: el.getAttribute('alt') ?? el.getAttribute('aria-label') ?? '',
       selector: el.tagName.toLowerCase() + (el.id ? `#${el.id}` : el.classList.length ? '.' + [...el.classList].slice(0, 2).join('.') : ''),
     }));
-    const file = `${assetPrefix}-img${out.length + 1}.png`;
     let screenshot: string | undefined;
-    try {
-      await h.screenshot({ path: `${assetDir}/${file}`, timeout: 5000 });
-      screenshot = `assets/${file}`;
-    } catch {
-      /* off-screen or detached: keep metadata only */
+    if (screenshots) {
+      const file = `${screenshots.assetPrefix}-img${out.length + 1}.png`;
+      try {
+        await h.screenshot({ path: `${screenshots.assetDir}/${file}`, timeout: 5000 });
+        screenshot = `assets/${file}`;
+      } catch {
+        /* off-screen or detached: keep metadata only */
+      }
     }
     out.push({ ...meta, screenshot });
   }

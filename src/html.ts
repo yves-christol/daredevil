@@ -281,18 +281,20 @@ function diffSection(d: ReportDiff): string {
 }
 
 function imagesSection(pages: PageResult[]): string {
-  const imgs = pages.flatMap((p) => (p.images ?? []).filter((i) => i.screenshot).map((i) => ({ ...i, page: p.path })));
+  const imgs = pages.flatMap((p) => (p.images ?? []).map((i) => ({ ...i, page: p.path })));
   if (!imgs.length) return '';
   const shown = imgs.slice(0, 60);
+  const shots = imgs.some((i) => i.screenshot);
+  const how = shots ? 'Screenshots taken during the scan' : 'No screenshots (off for logged-in audits, personal data): open the image address to compare';
   return `<section id="images" aria-labelledby="images-h">
   <h2 id="images-h">Images and their alt text <span class="count">${imgs.length}</span></h2>
-  <p class="lede">Does each text alternative convey what the image conveys? Screenshots taken during the scan${imgs.length > shown.length ? `; first ${shown.length} shown` : ''}.</p>
+  <p class="lede">Does each text alternative convey what the image conveys? ${how}${imgs.length > shown.length ? `; first ${shown.length} shown` : ''}.</p>
   <ul class="gallery">
   ${shown
     .map(
       (i) => `<li><figure>
-    <div class="thumb"><img src="${assetHref(i.screenshot!)}" alt="" loading="lazy"></div>
-    <figcaption><span class="alt-label">alt</span> “${esc(i.alt)}”<br><code>${esc(i.page)}</code></figcaption>
+    ${i.screenshot ? `<div class="thumb"><img src="${assetHref(i.screenshot)}" alt="" loading="lazy"></div>` : ''}
+    <figcaption><span class="alt-label">alt</span> “${esc(i.alt)}”<br><code>${esc(i.page)}</code>${i.screenshot ? '' : `<br><span class="alt-label">src</span> <code>${esc(i.src.startsWith('data:') ? 'inline data URL' : i.src.slice(0, 200))}</code>`}</figcaption>
   </figure></li>`,
     )
     .join('')}
@@ -320,7 +322,7 @@ export function renderHtml(r: Report, extras: HtmlExtras = {}): string {
     extras.fixPrompt && ['fix-prompt', 'Fix prompt'],
     r.needsReview.length && ['review', 'Needs review'],
     kb.length && ['keyboard', 'Keyboard'],
-    r.pages.some((p) => p.images?.some((i) => i.screenshot)) && ['images', 'Images'],
+    r.pages.some((p) => p.images?.length) && ['images', 'Images'],
     ['pages', 'Pages'],
     ['method', 'Method'],
   ].filter(Boolean) as [string, string][];

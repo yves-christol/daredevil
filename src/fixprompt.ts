@@ -255,7 +255,7 @@ export function fixPromptMarkdown(r: Report, opts: FixPromptOptions = {}): strin
   const scope = `${r.config.scope.origin}${r.config.scope.pathPrefix || '/'}`;
   const reportJson = opts.reportDir ? `${opts.reportDir}/report.json` : 'report.json';
   const authArgs = r.config.auth
-    ? ` --auth <session file for that site>${r.config.auth.loggedInCheck ? ` --logged-in-check '${r.config.auth.loggedInCheck.replace(/'/g, "'\\''")}'` : ''}`
+    ? ` --auth <session file for that site> ${r.config.imageScreenshots ? '--images' : '--no-images'}${r.config.auth.loggedInCheck ? ` --logged-in-check '${r.config.auth.loggedInCheck.replace(/'/g, "'\\''")}'` : ''}`
     : '';
   const reaudit = `npm run -s audit -- <url of the site with your changes>${r.config.scope.pathPrefix} --same-pages ${reportJson}${authArgs}`;
   const out: string[] = [];
@@ -275,7 +275,7 @@ export function fixPromptMarkdown(r: Report, opts: FixPromptOptions = {}): strin
     '',
     ...(r.config.auth
       ? [
-          '- These pages require a login. To re-audit, a person must first save a session for the target site from the daredevil checkout with `npm run -s login -- <url>` (they log in by hand; never ask for or handle their credentials), then pass the session file with `--auth`.',
+          '- These pages require a login. To re-audit, a person must first save a session for the target site from the daredevil checkout with `npm run -s login -- <url>` (they log in by hand; never ask for or handle their credentials), then pass the session file with `--auth`. Keep the screenshot choice of the original audit (`--images` or `--no-images`, already in the command below): the user decided it, since screenshots can show personal data.',
           '',
         ]
       : []),

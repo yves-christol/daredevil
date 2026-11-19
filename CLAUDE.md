@@ -27,6 +27,9 @@ runs the CLI and adds AI-assisted review, a human summary and a fix handoff.
 - `src/brand.ts`: embeds `assets/logo.svg` (inline header logo + favicon)
 - `docs/ux-guidelines.md`: brand and UX guidelines; its "Implementation notes" list the verified contrast values to use
 
+## Before launching a logged-in audit
+Ask the user explicitly (AskUserQuestion) whether image screenshots may be taken: they are saved in the report and can show personal data from the account; without them alt texts are still listed and reviewed from text only. Put the answer in the agent's task ("screenshots: yes" / "screenshots: no"). If the agent returns `QUESTION: screenshots`, ask, then relaunch it with the answer.
+
 ## When the daredevil subagent returns
 Subagents cannot write report files, so the agent returns its deliverables as text. When its final message arrives:
 1. Take `REPORT_DIR:` from it, and check that the folder exists and contains `report.json`.
@@ -38,5 +41,5 @@ Subagents cannot write report files, so the agent returns its deliverables as te
 - Any change to the scoring formula or constants: bump `SCORING_VERSION` in `src/score.ts`. Changing grouping signatures changes group ids: note it, since diffs across that change show false "fixed/new".
 - Code passed to `page.evaluate` must not contain named functions (`const f = () => …`): tsx/esbuild injects a `__name` helper that does not exist in the browser.
 - The score is computed only by code; the agent never adjusts it.
-- Logged-in audits: never handle credentials (the user logs in in the headed window), never put session-file content in a report or a message, never follow logout or account-changing links (`LOGOUT_URL`), and keep image screenshots off by default (personal data).
+- Logged-in audits: never handle credentials (the user logs in in the headed window), never put session-file content in a report or a message, never follow logout or account-changing links (`LOGOUT_URL`), and never take image screenshots without the user's explicit yes (`--images`, or the CLI's question); the alt-text inventory is collected either way.
 - Keep dependency versions pinned (exact): axe-core upgrades change rules and therefore scores.

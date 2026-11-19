@@ -67,6 +67,14 @@ export const inline = (s: string) =>
 export function markdownToHtml(md: string): string {
   const lines = md.replace(/\r/g, '').split('\n');
   const out: string[] = [];
+  // The summary's top heading level becomes h3, under the page's own h2, whatever level the agent started at.
+  let top = 6;
+  let fenced = false;
+  for (const l of lines) {
+    if (/^```/.test(l)) fenced = !fenced;
+    const m = !fenced && /^(#{1,6})\s/.exec(l);
+    if (m) top = Math.min(top, m[1].length);
+  }
   let i = 0;
   while (i < lines.length) {
     const line = lines[i];
@@ -76,8 +84,7 @@ export function markdownToHtml(md: string): string {
     }
     const h = /^(#{1,6})\s+(.*)$/.exec(line);
     if (h) {
-      // Shift headings so a summary's "# Title" nests under the report's own h2.
-      const level = Math.min(6, h[1].length + 2);
+      const level = Math.min(6, h[1].length - top + 3);
       out.push(`<h${level}>${inline(h[2])}</h${level}>`);
       i++;
       continue;

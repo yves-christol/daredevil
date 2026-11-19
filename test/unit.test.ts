@@ -86,6 +86,7 @@ test('site score: mean of the worst max(10%, 5) pages, not diluted by easy pages
 
 test('markdownToHtml escapes and renders the agent summary subset', async () => {
   const { markdownToHtml } = await import('../src/html.ts');
+  assert.equal(markdownToHtml('## Top\n\n### Sub\n\n```\n# not a heading\n```'), '<h3>Top</h3>\n<h4>Sub</h4>\n<pre><code># not a heading</code></pre>', 'top heading level maps to h3, code fences ignored');
   const html = markdownToHtml('# T\n\nHello **bold** `<b>` <script>x</script>\n\n- a\n  - b\n\n| H | I |\n|---|---|\n| 1 | 2 |');
   assert.ok(!html.includes('<script>'));
   assert.match(html, /<strong>bold<\/strong>/);
@@ -227,6 +228,11 @@ test('batch page: escaping, safe relative links, worst first, no combined score'
   assert.match(html, /Some audits ran with a saved login session/);
   assert.match(html, /does not combine them into one score/);
   assert.match(html, /<a class="skip" href="#entries">/);
+
+  const reviewedHtml = renderBatchHtml(b, { reviewed: new Set([0, 2]) });
+  assert.ok(reviewedHtml.includes('<a class="small" href="../../../a.com_x/20260101-000000/report.html#summary">AI review</a>'), 'reviewed entry links to its summary');
+  assert.equal(reviewedHtml.match(/>AI review</g)?.length, 1, 'only scored entries with a report get the link');
+  assert.match(batchMarkdown(b, new Set([0])), /\| Scored · AI review \|/);
 
   const md = batchMarkdown(b);
   assert.match(md, /^# Batch report: Q4 <batch>/);

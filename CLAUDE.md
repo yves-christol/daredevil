@@ -7,7 +7,8 @@ runs the CLI and adds AI-assisted review, a human summary and a fix handoff.
 ## Commands
 - `npm run -s audit -- <url> [--max-pages N] [--same-pages prev/report.json] [--auth .auth/<host>.json]`: writes `reports/<site-slug>/<timestamp>/` (`<site-slug>_auth` when logged in)
 - `npm run -s batch -- <list.txt|list.json> [--base URL] [--parallel N] [--same-pages-from <batch.json|dir|latest>] [audit options]`: one audit per entry, each in its usual `reports/<site-slug>/<timestamp>/`, plus `reports/_batches/<name>/<timestamp>/` with `batch.json`, `index.html` (every score, linking to each `report.html`) and `index.md` (file formats: `src/batch.ts` header)
-- `npm run -s render-batch -- <batchDir>`: rebuilds `index.html` / `index.md` from `batch.json`, including the agent's `summary.md` if present
+- `npm run -s render-batch -- <batchDir>`: rebuilds `index.html` / `index.md` from `batch.json`, including the agent's `summary.md` if present and an "AI review" link for entries whose folder has one
+- `... | npm run -s batch -- - --name <name> [--base URL]`: the list from stdin (how the agent runs batches: it cannot write files)
 - `npm run -s login -- <url>`: headed browser, the user logs in by hand, saves the Playwright storage state to `.auth/<host>.json` (0600, git-ignored)
 - `npm run -s diff -- before.json after.json`
 - `npm run -s render -- <reportDir>`: rebuilds `report.md` / `report.html` / `fix-prompt.md`, including the agent's files if present
@@ -33,7 +34,7 @@ runs the CLI and adds AI-assisted review, a human summary and a fix handoff.
 - `src/brand.ts`: embeds `assets/logo.svg` (inline header logo + favicon)
 - `docs/ux-guidelines.md`: brand and UX guidelines; its "Implementation notes" list the verified contrast values to use
 
-## Before launching a logged-in audit
+## Before launching a logged-in audit (or a batch with logged-in entries)
 Ask the user explicitly (AskUserQuestion) whether image screenshots may be taken: they are saved in the report and can show personal data from the account; without them alt texts are still listed and reviewed from text only. Put the answer in the agent's task ("screenshots: yes" / "screenshots: no"). If the agent returns `QUESTION: screenshots`, ask, then relaunch it with the answer.
 
 ## When the daredevil subagent returns
@@ -41,6 +42,14 @@ Subagents cannot write report files, so the agent returns its deliverables as te
 1. Take `REPORT_DIR:` from it, and check that the folder exists and contains `report.json`.
 2. For each `<<<FILE name>>> … <<<END FILE>>>` block, write the content verbatim to `<REPORT_DIR>/<name>`. Only accept `assisted.json`, `summary.md` and `handoff.md`. Make sure `assisted.json` parses as JSON.
 3. Run `npm run -s render -- <REPORT_DIR>`, then give the user the brief and the path of `report.html`.
+
+For a batch, the message starts with `BATCH_DIR:` instead:
+1. Check that the folder exists and contains `batch.json`.
+2. `<<<FILE summary.md>>>` goes to `<BATCH_DIR>/summary.md`.
+3. `<<<FILE entries/<n>/<name>>>>` (`<name>` one of `assisted.json`, `summary.md`, `handoff.md`) goes to entry `n` (1-based) of `batch.json` `entries[]`: its folder is `<BATCH_DIR>/<entries[n-1].reportDir>`, and must contain `report.json`. Reject any other file name, and any `n` out of range. Make sure each `assisted.json` parses as JSON.
+4. Run `npm run -s render -- <entry folder>` for each entry that received files, then `npm run -s render-batch -- <BATCH_DIR>`. Give the user the brief and the path of `<BATCH_DIR>/index.html`.
+
+When the user lists several URLs or paths, give the agent the list as-is (it pipes it into `batch -`) and, if they said so, the review depth (`review: worst N`, `all`, `none` or entry labels; default: the 3 worst).
 
 ## Invariants
 - UI (report.html, batch index.html) follows `docs/ux-guidelines.md`. Check contrast numerically before adding a colour: the original token table overstates some ratios.

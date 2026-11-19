@@ -65,7 +65,9 @@ Batch:
   <file>.json            { "name", "base", "defaults": {settings}, "entries": ["/path" |
                          { "url", "label", ...settings }] }. Settings use the option names in
                          camelCase (maxPages, exclude, auth, samePages, viewport: "1280x800", ...)
+  -                      As <file>: read the list from stdin (JSON if it starts with '{')
   --base <url>           Resolve /paths against this origin (overrides the file's base)
+  --name <name>          Batch name (overrides the file's; default: the file name, or 'batch')
   --parallel <n>         Audits run at once (default 1). Never two on the same origin at once: for
                          one site, raise --concurrency (pages in parallel) instead
   --same-pages-from <b>  Re-scan, for each entry, exactly the pages its scope scanned in batch <b>:
@@ -200,13 +202,17 @@ async function audit(argv: string[]) {
 
 async function batch(argv: string[]) {
   if (argv.includes('--help') || argv.includes('-h')) return void process.stdout.write(USAGE);
-  const { values, positionals } = parseArgs({ args: argv, allowPositionals: true, options: { ...AUDIT_ARGS, base: { type: 'string' }, parallel: { type: 'string' }, 'same-pages-from': { type: 'string' } } });
+  const { values, positionals } = parseArgs({ args: argv, allowPositionals: true, options: { ...AUDIT_ARGS, base: { type: 'string' }, name: { type: 'string' }, parallel: { type: 'string' }, 'same-pages-from': { type: 'string' } } });
   const source = positionals[0];
   if (!source) throw new Error('missing <batch file>\n\n' + USAGE);
   if (values['same-pages']) throw new Error('--same-pages applies to one audit: set "samePages" on the entry in a .json batch file');
-  const file = parseBatchFile(await readFile(source, 'utf8'), source);
+  // '-' reads the list from stdin (JSON if it starts with '{', else the text format): no file to write first.
+  const fromStdin = source === '-';
+  const text = fromStdin ? await readStdin() : await readFile(source, 'utf8');
+  const file = parseBatchFile(text, fromStdin ? (text.trimStart().startsWith('{') ? 'stdin.json' : 'stdin.txt') : source);
+  if (values.name?.trim()) file.name = values.name.trim();
   const entries = resolveEntries(file, settingsFromArgs(values), values.base);
-  const name = batchName(file, source);
+  const name = fromStdin && !file.name ? 'batch' : batchName(file, source);
   const parallel = values.parallel === undefined ? 1 : Number(values.parallel);
   if (!Number.isInteger(parallel) || parallel < 1) throw new Error(`--parallel: expected a whole number of 1 or more, got: ${values.parallel}`);
   if (values['same-pages-from']) {
@@ -227,7 +233,7 @@ async function batch(argv: string[]) {
   };
 
   console.error(`Batch: ${entries.length} audit(s)${parallel > 1 ? `, up to ${parallel} at once (one per origin)` : ''}`);
-  const { batchDir, batch: b } = await runBatch({ name, source, entries, imageScreenshots, out: values.out, log, parallel });
+  const { batchDir, batch: b } = await runBatch({ name, source: fromStdin ? 'stdin' : source, entries, imageScreenshots, out: values.out, log, parallel });
   console.log(
     JSON.stringify(
       {
@@ -309,6 +315,13 @@ async function render(argv: string[]) {
   await writeFile(join(dir, 'report.md'), reportMarkdown(report, extras.diff));
   await writeFile(join(dir, 'report.html'), renderHtml(report, extras));
   console.log(join(dir, 'report.html'));
+}
+
+async function readStdin(): Promise<string> {
+  if (process.stdin.isTTY) throw new Error("batch -: pipe the list in, e.g. printf '/shop\\n/cart\\n' | npm run -s batch -- - --base https://site.com");
+  const chunks: Buffer[] = [];
+  for await (const c of process.stdin) chunks.push(c as Buffer);
+  return Buffer.concat(chunks).toString('utf8');
 }
 
 async function renderBatchCmd(argv: string[]) {

@@ -10,12 +10,14 @@ Give daredevil a URL, optionally with a path (`https://www.mysite.com/shop`), an
 2. **An audit report** in two layers: a human-readable summary, and a structured list of anomalies grouped by root cause and ranked by impact.
 3. **A ready-to-use fix prompt.** Paste it into an AI coding agent working in the site's codebase: it lists every defect with its evidence, groups them by category, and asks for one merge request per category, each verified by a re-audit.
 
+Give it a **list** of URLs or paths instead, and it audits each one and adds a **global page** with every score side by side, links to each detailed report, the root causes the audits share (one fix in a shared template repairs them all), and the change since the previous batch.
+
 daredevil has two parts:
 
 | Part | What it does | Deterministic? |
 |---|---|---|
-| **Engine**: a TypeScript CLI ([Playwright](https://playwright.dev) + [axe-core](https://github.com/dequelabs/axe-core)) | Crawls the pages, runs the WCAG checks, scores, groups and writes `report.json`, `report.md`, `report.html` and `fix-prompt.md` | Yes. The score comes only from here |
-| **Agent**: a Claude Code subagent (`.claude/agents/daredevil.md`) | Runs the engine, reviews what automation can't decide (alt-text quality, keyboard behaviour, undecided items) and returns `summary.md`, `assisted.json` and `handoff.md`, which the calling session writes and renders into `report.html` | No. It is AI judgement, kept separate from the score |
+| **Engine**: a TypeScript CLI ([Playwright](https://playwright.dev) + [axe-core](https://github.com/dequelabs/axe-core)) | Crawls the pages, runs the WCAG checks, scores, groups and writes `report.json`, `report.md`, `report.html` and `fix-prompt.md` (and, for a batch, the global `index.html`) | Yes. The score comes only from here |
+| **Agent**: a Claude Code subagent (`.claude/agents/daredevil.md`) | Runs the engine, reviews what automation can't decide (alt-text quality, keyboard behaviour, undecided items) and returns `summary.md`, `assisted.json` and `handoff.md`, which the calling session writes and renders into `report.html`. For a batch, it also writes a brief for the whole batch and reviews the worst audits in full | No. It is AI judgement, kept separate from the score |
 
 ---
 
@@ -33,6 +35,8 @@ npx playwright install chromium
 > daredevil, I fixed the image alts, re-audit the shop and tell me if it improved
 >
 > daredevil, compare the accessibility of site-a.com and site-b.com
+>
+> daredevil, audit /shop, /cart, /account and /help on www.mysite.com and give me one page with all the scores
 
 **Engine only:**
 
@@ -52,6 +56,13 @@ npm run -s audit -- https://www.mysite.com/shop --max-pages 25
   "violationNodes": 439,
   "fixPrompt": "reports/www.w3.org_WAI_demos_bad_before/20261118-195027/fix-prompt.md"
 }
+```
+
+**A batch** (one line per URL or path, optional label after it):
+
+```bash
+printf '/shop Shop\n/cart Cart\n/help Help\n' > mysite.txt
+npm run -s batch -- mysite.txt --base https://www.mysite.com --max-pages 10
 ```
 
 ### Scope
@@ -82,6 +93,58 @@ npm run -s audit -- https://espace-client.orange.fr/ --auth .auth/espace-client.
 - **Personal data.** Account pages show names, addresses and contract numbers, which end up in HTML snippets. Image screenshots are therefore your decision: the audit asks whether to take them (or pass `--images` / `--no-images`; without a terminal it refuses to guess). The alt-text inventory is collected either way, and the reports carry a "Logged-in audit" warning. Review them before sharing.
 - Logged-in runs are stored under `reports/<slug>_auth/`, so they are never compared with logged-out runs of the same URL.
 
+### Batches: many URLs or paths, one global page
+
+`npm run -s batch -- <file>` runs one audit per entry, then writes a global page linking them all.
+
+**The list.** A `.txt` file has one entry per line, with an optional label after the URL:
+
+```text
+# mysite.txt
+name: mysite
+base: https://www.mysite.com
+/shop          Shop
+/cart          Cart
+/help          Help
+https://blog.mysite.com   Blog
+```
+
+`base:` resolves the `/paths` (or pass `--base`), and `name:` names the batch (default: the file name). A `.json` file can also set options for all entries or for one:
+
+```json
+{
+  "name": "mysite",
+  "base": "https://www.mysite.com",
+  "defaults": { "maxPages": 10 },
+  "entries": [
+    "/shop",
+    { "url": "/help", "label": "Help centre", "maxPages": 30, "exclude": ["/help/archive"] },
+    { "url": "/account", "auth": ".auth/www.mysite.com.json" }
+  ]
+}
+```
+
+Settings use the CLI option names in camelCase (`maxPages`, `exclude`, `auth`, `samePages`, `viewport: "390x844"`…); unknown keys are rejected, since they are usually typos. The list can also come from stdin: `printf '/shop\n/cart\n' | npm run -s batch -- - --base https://www.mysite.com --name mysite`.
+
+**How it runs.**
+- Command-line options apply to every entry. Precedence: built-in defaults < the file's `defaults` < the command line < the entry's own settings. `--exclude` patterns from all levels add up.
+- Every entry is checked before anything is crawled (URLs, duplicate scopes, `--exclude` patterns, login sessions, `samePages` files). If anything is wrong, nothing runs and all the problems are listed.
+- A failing entry (HTTP 403, unreachable, lost session) is recorded with its error and the batch goes on.
+- Each audit is written to its usual `reports/<site-and-path>/<timestamp>/`, so it keeps its history: running it alone or in a batch makes no difference.
+- With logged-in entries, the screenshot question is asked once for the whole batch. It cannot be answered from the file.
+- `--parallel N` runs up to N audits at once, but never two on the same origin: parallel requests to one host trip bot protection. To speed up a single site, raise `--concurrency` instead (pages in parallel inside an audit).
+
+**The global page**, `reports/_batches/<name>/<timestamp>/index.html`:
+- **Header:** the lowest, median and highest scores and the number of audits in each band. There is no combined score: each audit keeps its own, which is the mean of its worst pages.
+- **Results:** one row per audit, worst first, linking to its `report.html`. Each row shows the score and its A / AA sub-scores, the change, pages, root causes, critical issues, the top issue with its estimated gain, and the status. Audits without a score say why. Columns sort on click.
+- **Shared root causes:** the same rule on the same component or style (the same group id) in several audits, most widespread first, with the gain each audit would get. These are usually one fix in a shared header, component or stylesheet.
+- **The previous batch:** a batch with the same name as an earlier one is compared with it, audit by audit: the score change, whether the runs are strictly comparable, issue groups fixed or new, and audits added or removed. Without a previous batch, the Change column compares each audit with its scope's previous run.
+- **Alongside:** `batch.json` (all of the above, for machines and the agent) and `index.md` (the same tables in Markdown). The page is rewritten after each audit, so it shows progress, and an interrupted batch keeps what was done.
+
+**Re-audit after fixes:** run the same list with `--same-pages-from latest`. Each entry then re-scans exactly the pages its scope scanned in the last complete batch of that name. `--same-pages-from` also accepts a `batch.json` or a batch folder.
+
+**With the agent,** give it the list in plain words. It pipes the list into `batch -`, writes a brief for the whole batch that leads with the shared root causes, and fully reviews the 3 worst audits. Ask for `review: all`, `review: none`, `review: worst N`, or name the audits to change that. Reviewed audits get an "AI review" link on the global page.
+
 ---
 
 ## What you get
@@ -98,6 +161,15 @@ Each run writes to `reports/<site-and-path>/<timestamp>/`:
 | `summary.md` | humans: a one-page executive summary | agent |
 | `assisted.json` | machines: the agent's findings, with confidence levels | agent |
 | `handoff.md` | an AI fixer: one task per root cause, with fix guidance and acceptance criteria | agent |
+
+A batch also writes `reports/_batches/<name>/<timestamp>/`:
+
+| File | Audience | Produced by |
+|---|---|---|
+| `index.html` | humans: every score side by side, linking to each `report.html`, shared root causes, change since the previous batch | engine (`batch` / `render-batch`) |
+| `index.md` | humans in a terminal or a pull request: the same tables | engine |
+| `batch.json` | machines and AIs: every audit's status, scores, top issue, comparison and the shared root causes | engine |
+| `summary.md` | humans: a brief for the whole batch, shown at the top of `index.html` | agent |
 
 ## Report samples
 
@@ -116,6 +188,18 @@ It contains the score panel and breakdown, the agent's summary, the change since
 **A teaching tool, too.** Every defect has a **?** button that opens a plain-language explanation written for developers new to accessibility: what the defect is, what is at stake for real people (what a screen reader announces, what a keyboard user cannot do), who is affected, an everyday analogy, how to fix it with before/after code, and the WCAG criterion in plain words. The explanations come from a library with one entry for each of the 97 axe rules daredevil runs ([`assets/explanations.json`](assets/explanations.json)), written by the daredevil agent; a test fails if an axe-core upgrade adds a rule without one. The buttons also appear next to undecided items and in the change-since-last-run lists.
 
 ![HTML report: plain-language explanation of a defect](docs/report-html-explain.png)
+
+### Batch page
+
+The global page of a batch auditing the "before" and "after" versions of W3C's [Before and After Demonstration](https://www.w3.org/WAI/demos/bad/) (the site of the samples below), 8 pages each: one row per audit, linking to its detailed report.
+
+![Batch page: score spread and one row per audit](docs/batch-html.png)
+
+Its shared root causes are the demo's own wrapper (the links to the report and the page tabs), which appears in both versions: one fix in that template would improve both scores.
+
+![Batch page: root causes shared by both audits](docs/batch-html-shared.png)
+
+It follows the same guidelines as `report.html`, and daredevil audits it too: it scores 100, with a skip link, sortable columns announced to screen readers, and scrollable tables reachable by keyboard.
 
 
 The samples below are real output from auditing W3C's [Before and After Demonstration](https://www.w3.org/WAI/demos/bad/), a site built to be inaccessible on purpose, with a repaired "after" version (8 pages each).
@@ -362,7 +446,8 @@ The precise selector patterns of each group are kept in `patterns`, so the fixer
   ```bash
   npm run -s audit -- https://www.mysite.com/shop --same-pages reports/www.mysite.com_shop/<timestamp>/report.json
   ```
-- **Between sites:** use the same options for each (`--max-pages`, viewport), then compare `summary.score`. Comparing the same section type (e.g. `/shop` against `/shop`) is fairer than comparing whole sites.
+- **Between sites:** use the same options for each (`--max-pages`, viewport), then compare `summary.score`. Comparing the same section type (e.g. `/shop` against `/shop`) is fairer than comparing whole sites. A batch does this for you: one list, the same options for every entry, one page.
+- **A batch after a fix:** re-run the same list (same batch name) with `--same-pages-from latest`; the global page then shows each audit's change since the previous batch, and whether the comparison is strict.
 - **Determinism:** pages load with reduced motion, a fixed viewport, `networkidle` plus `--wait-ms` of settle time, and a fresh browser context per page. Highly dynamic pages (A/B tests, rotating banners) can still vary slightly between runs.
 - **Cookie-consent dialogs** are dismissed before scanning, the way a privacy-minded user would: "reject" or "continue without accepting", never "accept". Known consent tools (Didomi, OneTrust, Cookiebot, Axeptio, tarteaucitron, Usercentrics…) are detected, with a text-based fallback in French and English. Without this, the dialog covers the page: the keyboard probe gets stuck in it and screenshots show it. Use `--consent-selector` when a dialog isn't recognised, and `--keep-consent` to audit the dialog itself. Runs with different consent handling are flagged as not comparable.
 
@@ -395,8 +480,18 @@ npm run -s login -- <url> [options]  open a browser, log in by hand, save the se
   --logged-in-check <s>  Save as soon as this selector is visible
   --wait <minutes>       Give up after this long (default 10)
 
+npm run -s batch -- <list.txt|list.json|-> [options]  one audit per entry, plus the global page
+  -                      read the list from stdin (JSON if it starts with '{')
+  --base <url>           resolve /paths against this origin (overrides the file's base)
+  --name <name>          batch name (overrides the file's; default: the file name)
+  --parallel <n>         audits run at once (default 1); never two on the same origin
+  --same-pages-from <b>  re-scan, per entry, the pages its scope scanned in batch <b>:
+                         a batch.json, its folder, or 'latest' (last complete batch of this name)
+  + every audit option above, applied to all entries (entry settings in a .json file win)
+
 npm run -s diff -- <before/report.json> <after/report.json>
 npm run -s render -- <reportDir>     rebuild report.md / report.html with the agent's files
+npm run -s render-batch -- <batchDir> rebuild index.html / index.md with the agent's summary.md
 ```
 
 **User agent.** Many sites reject headless browsers (W3C returns HTTP 403). By default daredevil sends the regular Chrome user agent plus a `daredevil-a11y/0.1` token, so it stays identifiable in server logs. Audit only sites you are allowed to crawl, and keep `--concurrency` low on production sites.
@@ -418,7 +513,11 @@ npm run typecheck
 ```
 
 ```text
-src/cli.ts       arguments, report directory, automatic comparison with the previous run
+src/cli.ts       arguments, the screenshot question, command dispatch
+src/run.ts       one audit end to end: option checks, config, crawl, report files, comparison with the previous run
+src/batch.ts     batch files, option precedence, pre-flight checks, parallel pool, batch.json, shared root causes, previous batch
+src/batchhtml.ts batch page (index.html) and index.md
+src/htmlkit.ts   shared by both pages: escaping, score bands, badges, page shell, base CSS
 src/crawl.ts     URL normalisation and scope
 src/audit.ts     browser, breadth-first crawl, axe scan, conversion of axe results
 src/probes.ts    keyboard probe, image inventory and screenshots
@@ -427,7 +526,7 @@ src/score.ts     scoring model (bump SCORING_VERSION on any change)
 src/wcag.ts      audited axe tags, WCAG criteria, levels and principles from axe tags
 src/report.ts    report.json assembly, diff, markdown rendering
 src/fixprompt.ts fix-prompt.md: fix categories, one merge request per category
-src/html.ts      HTML report
+src/html.ts      HTML report (report.html)
 src/explain.ts   loads assets/explanations.json, the "?" explanation per axe rule
 src/auth.ts      login session capture and loading, login-page and logout-link detection
 src/consent.ts   cookie-dialog dismissal

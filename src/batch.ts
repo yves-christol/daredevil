@@ -582,8 +582,10 @@ export async function writeBatchFiles(batchDir: string, batch: BatchReport): Pro
   const summaryPath = join(batchDir, 'summary.md');
   const summaryMd = existsSync(summaryPath) ? await readFile(summaryPath, 'utf8') : undefined;
   await writeFile(join(batchDir, 'batch.json'), JSON.stringify(batch, null, 2));
-  await writeFile(join(batchDir, 'index.html'), renderBatchHtml(batch, { summaryMd }));
-  await writeFile(join(batchDir, 'index.md'), batchMarkdown(batch));
+  // Entries the agent reviewed: their report folder has its summary.md.
+  const reviewed = new Set(batch.entries.flatMap((e, i) => (e.reportDir && existsSync(join(batchDir, e.reportDir, 'summary.md')) ? [i] : [])));
+  await writeFile(join(batchDir, 'index.html'), renderBatchHtml(batch, { summaryMd, reviewed }));
+  await writeFile(join(batchDir, 'index.md'), batchMarkdown(batch, reviewed));
 }
 
 /** Rebuild index.html / index.md from batch.json. */

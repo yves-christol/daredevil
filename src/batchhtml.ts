@@ -10,6 +10,8 @@ import { BAND_ICON, BAND_LABEL, band, esc, fmt, impactBadge, markdownToHtml, pag
 export interface BatchExtras {
   /** The agent's batch-level brief (summary.md in the batch folder). */
   summaryMd?: string;
+  /** Indexes of entries with an agent review (summary.md in their report folder). */
+  reviewed?: Set<number>;
 }
 
 const STATUS_LABEL: Record<EntryStatus, string> = {
@@ -70,7 +72,7 @@ function bandCounts(entries: BatchEntryResult[]): Record<Band, number> {
   return c;
 }
 
-function row(b: BatchReport, { e, order }: { e: BatchEntryResult; order: number }): string {
+function row(b: BatchReport, { e, order }: { e: BatchEntryResult; order: number }, reviewed: boolean): string {
   const href = reportHref(e);
   const ok = scored(e);
   const s = e.score;
@@ -86,7 +88,7 @@ function row(b: BatchReport, { e, order }: { e: BatchEntryResult; order: number 
         : '<td class="num"><span class="muted">–</span></td>';
   const top = e.topIssue;
   return `<tr data-order="${order}" data-label="${esc(e.label.toLowerCase())}" data-score="${ok ? s!.overall : ''}" data-delta="${num(c.delta)}" data-pages="${num(e.pagesScanned)}" data-groups="${ok ? num(e.issueGroups) : ''}" data-critical="${ok ? num(e.byImpact?.critical) : ''}">
-  <th scope="row">${href ? `<a href="${esc(href)}">${esc(e.label)}</a>` : esc(e.label)}<br><span class="muted small entry-url">${esc(e.url.replace(/^https?:\/\//, ''))}${e.loggedIn ? ' · logged in' : ''}</span></th>
+  <th scope="row">${href ? `<a href="${esc(href)}">${esc(e.label)}</a>` : esc(e.label)}<br><span class="muted small entry-url">${esc(e.url.replace(/^https?:\/\//, '')).replace(/\//g, '/<wbr>')}${e.loggedIn ? ' · logged in' : ''}</span></th>
   <td class="num">${ok ? `<span class="pill band-${bd}">${s!.overall}</span><br><span class="small band-text-${bd}"><span aria-hidden="true">${BAND_ICON[bd!]}</span> ${BAND_LABEL[bd!]}</span>` : '<span class="muted">–</span>'}</td>
   ${delta}
   <td class="num nowrap">${ok ? `${s!.byLevel.A}<span class="muted"> / </span>${s!.byLevel.AA}` : ''}</td>
@@ -94,7 +96,7 @@ function row(b: BatchReport, { e, order }: { e: BatchEntryResult; order: number 
   <td class="num">${ok ? num(e.issueGroups) : ''}</td>
   <td class="num">${ok ? fmt(e.byImpact?.critical ?? 0) : ''}</td>
   <td>${ok && top ? `${esc(top.help)}<br><span class="muted small">${impactBadge(top.impact)} ${top.estimatedScoreGain > 0 ? `${signed(top.estimatedScoreGain)} pts · ` : ''}${top.pageCount} page${top.pageCount === 1 ? '' : 's'}</span>` : ''}</td>
-  <td>${ok ? `<span class="ok-icon" aria-hidden="true">✓</span> ${STATUS_LABEL.ok}` : `<span class="${e.status === 'pending' ? 'muted' : 'warn-text'}"><span aria-hidden="true">${e.status === 'pending' ? '…' : '✕'}</span> ${STATUS_LABEL[e.status]}</span>`}${e.error ? `<br><span class="muted small">${esc(e.error.split('\n')[0].slice(0, 300))}</span>` : ''}${e.stopped ? `<br><span class="muted small">${esc(e.stopped)}</span>` : ''}</td>
+  <td>${ok ? `<span class="ok-icon" aria-hidden="true">✓</span> ${STATUS_LABEL.ok}${reviewed && href ? `<br><a class="small" href="${esc(href)}#summary">AI review</a>` : ''}` : `<span class="${e.status === 'pending' ? 'muted' : 'warn-text'}"><span aria-hidden="true">${e.status === 'pending' ? '…' : '✕'}</span> ${STATUS_LABEL[e.status]}</span>`}${e.error ? `<br><span class="muted small">${esc(e.error.split('\n')[0].slice(0, 300))}</span>` : ''}${e.stopped ? `<br><span class="muted small">${esc(e.stopped)}</span>` : ''}</td>
 </tr>`;
 }
 
@@ -166,7 +168,7 @@ ${extras.summaryMd ? `<section id="summary" aria-labelledby="summary-h" class="p
       <th scope="col">Status</th>
     </tr></thead>
     <tbody>
-    ${worstFirst(b.entries).map((x) => row(b, x)).join('\n')}
+    ${worstFirst(b.entries).map((x) => row(b, x, !!extras.reviewed?.has(x.order))).join('\n')}
     </tbody>
   </table></div>
   <p class="visually-hidden" aria-live="polite" id="sort-status"></p>
@@ -187,7 +189,7 @@ ${pageEnd(JS)}`;
 }
 
 /** index.md: the same table, for a terminal or a pull request. */
-export function batchMarkdown(b: BatchReport): string {
+export function batchMarkdown(b: BatchReport, reviewed?: Set<number>): string {
   const s = b.summary;
   const cell = (v: string) => v.replace(/\|/g, '\\|').replace(/\n/g, ' ');
   const lines = [
@@ -202,13 +204,13 @@ export function batchMarkdown(b: BatchReport): string {
     const p = b.previous;
     lines.splice(4, 0, `Compared with the previous batch (${p.generatedAt})${p.summary.median !== undefined && s.median !== undefined ? `: median ${p.summary.median} → ${s.median}` : ''}${p.added.length ? `, ${p.added.length} added` : ''}${p.removed.length ? `, ${p.removed.length} removed (${p.removed.map(cell).join(', ')})` : ''}.`, '');
   }
-  for (const { e } of worstFirst(b.entries)) {
+  for (const { e, order } of worstFirst(b.entries)) {
     const c = changeOf(b, e);
     const ok = scored(e);
     const href = reportHref(e);
     const label = href ? `[${cell(e.label)}](${href})` : cell(e.label);
     lines.push(
-      `| ${label} | ${ok ? `${e.score!.overall} ${BAND_LABEL[band(e.score!.overall)]}` : '–'} | ${c.delta !== undefined ? `${signed(c.delta)}${c.comparable === false ? '*' : ''}` : c.isNew ? 'new' : '–'} | ${ok ? `${e.score!.byLevel.A} / ${e.score!.byLevel.AA}` : ''} | ${e.pagesScanned ?? ''} | ${ok ? (e.issueGroups ?? '') : ''} | ${ok ? (e.byImpact?.critical ?? 0) : ''} | ${ok && e.topIssue ? `\`${e.topIssue.ruleId}\` ${cell(e.topIssue.help)}` : ''} | ${STATUS_LABEL[e.status]}${e.error ? `: ${cell(e.error.split('\n')[0].slice(0, 200))}` : ''} |`,
+      `| ${label} | ${ok ? `${e.score!.overall} ${BAND_LABEL[band(e.score!.overall)]}` : '–'} | ${c.delta !== undefined ? `${signed(c.delta)}${c.comparable === false ? '*' : ''}` : c.isNew ? 'new' : '–'} | ${ok ? `${e.score!.byLevel.A} / ${e.score!.byLevel.AA}` : ''} | ${e.pagesScanned ?? ''} | ${ok ? (e.issueGroups ?? '') : ''} | ${ok ? (e.byImpact?.critical ?? 0) : ''} | ${ok && e.topIssue ? `\`${e.topIssue.ruleId}\` ${cell(e.topIssue.help)}` : ''} | ${STATUS_LABEL[e.status]}${reviewed?.has(order) ? ' · AI review' : ''}${e.error ? `: ${cell(e.error.split('\n')[0].slice(0, 200))}` : ''} |`,
     );
   }
   if (b.shared?.length) {
@@ -278,7 +280,7 @@ const CSS = `
 .sortable th[aria-sort="descending"] button::after { content: " ↓"; color: var(--text); }
 .sortable th[aria-sort] { color: var(--text); }
 .sortable tbody th { font-weight: 600; min-width: 12rem; }
-.entry-url { font-weight: 400; overflow-wrap: anywhere; }
+.entry-url { font-weight: 400; overflow-wrap: break-word; }
 .js-only[hidden] { display: none; }
 .shared { min-width: 44rem; }
 .shared tbody th { font-weight: 600; max-width: 32rem; }

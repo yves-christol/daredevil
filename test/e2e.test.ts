@@ -189,3 +189,37 @@ test('a page that redirects to an already-scanned page is skipped as a duplicate
     server.close();
   }
 });
+
+test('batch: audits each entry into its own history and lists them in batch.json', { timeout: 180_000 }, async () => {
+  const { url, server } = await serveFixtures();
+  try {
+    const { parseBatchFile, resolveEntries, runBatch } = await import('../src/batch.ts');
+    const file = parseBatchFile(`base: ${url}\n/shop Shop\n/nowhere\nhttp://127.0.0.1:1/ Unreachable\n`, 'fixture.txt');
+    const entries = resolveEntries(file, { maxPages: 3, waitMs: 0, timeoutMs: 5000, skipImages: true });
+    const out = await mkdtemp(join(tmpdir(), 'dd-batch-'));
+    const { batchDir, batch } = await runBatch({ name: 'fixture', source: 'fixture.txt', entries, imageScreenshots: { loggedOut: false, loggedIn: false }, out, log: () => {} });
+
+    assert.ok(batchDir.startsWith(join(out, '_batches', 'fixture')));
+    const saved = JSON.parse(await readFile(join(batchDir, 'batch.json'), 'utf8'));
+    assert.equal(saved.complete, true);
+    assert.deepEqual(saved, JSON.parse(JSON.stringify(batch)));
+    assert.deepEqual(batch.entries.map((e) => e.label), ['Shop', `${url.replace('http://', '')}/nowhere`, 'Unreachable']);
+
+    const shop = batch.entries[0];
+    assert.equal(shop.status, 'ok');
+    assert.equal(shop.pagesScanned, 3);
+    assert.ok(shop.score!.overall > 0 && shop.score!.overall < 100);
+    assert.ok(shop.topIssue && shop.topIssue.estimatedScoreGain > 0);
+    const report = JSON.parse(await readFile(join(batchDir, shop.reportDir!, 'report.json'), 'utf8'));
+    assert.equal(report.summary.score.overall, shop.score!.overall, 'reportDir is relative to the batch folder');
+    assert.match(shop.reportDir!, /^\.\.\/\.\.\/\.\.\/127\.0\.0\.1_\d+_shop\//, 'entries keep their usual reports/<slug>/ history');
+
+    assert.notEqual(batch.entries[2].status, 'ok', 'an unreachable site is not scored');
+    for (const e of batch.entries.filter((e) => e.status === 'no-pages')) assert.equal(e.score, undefined, 'no page, no score');
+    assert.equal(batch.entries[1].status, 'no-pages', 'a 404 start page scans nothing');
+    assert.equal(batch.summary.entries, 3);
+    assert.equal(batch.summary.min, Math.min(...batch.entries.filter((e) => e.status === 'ok').map((e) => e.score!.overall)));
+  } finally {
+    server.close();
+  }
+});

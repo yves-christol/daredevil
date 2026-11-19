@@ -7,6 +7,7 @@
   "type": "module",
   "scripts": {
     "audit": "tsx src/cli.ts audit",
+    "batch": "tsx src/cli.ts batch",
     "login": "tsx src/cli.ts login",
     "diff": "tsx src/cli.ts diff",
     "render": "tsx src/cli.ts render",

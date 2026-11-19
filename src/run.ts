@@ -40,6 +40,23 @@ export interface AuditOptions {
   out: string;
 }
 
+/** The options a batch file may set (per entry or as defaults): everything but the URL, screenshots and output. */
+export type AuditSettings = Omit<AuditOptions, 'startUrl' | 'imageScreenshots' | 'out'>;
+
+export const DEFAULT_AUDIT_SETTINGS: AuditSettings = {
+  maxPages: 25,
+  concurrency: 2,
+  viewport: { width: 1280, height: 800 },
+  waitMs: 1000,
+  timeoutMs: 30000,
+  keepQuery: false,
+  skipBestPractice: false,
+  skipKeyboard: false,
+  keepConsent: false,
+  skipImages: false,
+  exclude: [],
+};
+
 export interface AuditResult {
   reportDir: string;
   report: Report;
@@ -51,8 +68,9 @@ type Log = (m: string) => void;
 export const withScheme = (url: string) => (/^https?:\/\//.test(url) ? url : 'https://' + url);
 
 export function parseViewport(v: string): { width: number; height: number } {
-  const [width, height] = v.split('x').map(Number);
-  return { width, height };
+  const m = /^(\d+)x(\d+)$/.exec(v.trim());
+  if (!m) throw new Error(`viewport: expected <width>x<height>, e.g. 1280x800, got: ${v}`);
+  return { width: Number(m[1]), height: Number(m[2]) };
 }
 
 /**

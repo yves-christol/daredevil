@@ -8,12 +8,25 @@ import type { Report } from './types.ts';
 import { diffMarkdown, diffReports, reportMarkdown } from './report.ts';
 import { renderHtml, type HtmlExtras } from './html.ts';
 import { captureSession, defaultStateFile } from './auth.ts';
-import { auditSummary, buildAuditConfig, checkAuditOptions, parseViewport, previousReport, runSingleAudit, withScheme, writeFixPrompt } from './run.ts';
+import {
+  DEFAULT_AUDIT_SETTINGS,
+  auditSummary,
+  buildAuditConfig,
+  checkAuditOptions,
+  parseViewport,
+  previousReport,
+  runSingleAudit,
+  withScheme,
+  writeFixPrompt,
+} from './run.ts';
+import { batchName, parseBatchFile, preflight, resolveEntries, runBatch, type EntrySettings } from './batch.ts';
 
 const USAGE = `daredevil — accessibility audit (axe-core + Playwright)
 
 Usage:
   daredevil audit <url> [options]     Crawl pages under <url>'s path and audit them
+  daredevil batch <file> [options]    Audit every URL or path listed in <file> (.txt or .json), then
+                                      write reports/_batches/<name>/<stamp>/batch.json
   daredevil login <url> [options]     Open a browser, let you log in, save the session for --auth
   daredevil diff <before.json> <after.json>
   daredevil render <reportDir>        Rebuild report.md / report.html / fix-prompt.md, including the
@@ -43,6 +56,18 @@ Audit options:
   --images               With --auth: take image screenshots (you accept they may show personal data)
   --no-images            No image screenshots (alt-text inventory only)
   --out <dir>            Reports root (default ./reports)
+
+Batch:
+  <file>.txt             One entry per line: <url or /path> [label]. '#' comments, 'base: <url>' to
+                         resolve paths, 'name: <name>' for the batch folder (default: the file name)
+  <file>.json            { "name", "base", "defaults": {settings}, "entries": ["/path" |
+                         { "url", "label", ...settings }] }. Settings use the option names in
+                         camelCase (maxPages, exclude, auth, samePages, viewport: "1280x800", ...)
+  --base <url>           Resolve /paths against this origin (overrides the file's base)
+  Audit options apply to every entry: defaults < file "defaults" < command line < entry settings;
+  --exclude patterns add up. Entries run one after another; a failing entry is recorded and the
+  batch goes on. Every entry is checked (URLs, --exclude, sessions) before anything is crawled.
+  With logged-in entries, the screenshot question is asked once for the whole batch.
 
 Login options:
   --out <file>           Session file (default .auth/<host>.json, git-ignored, mode 0600)
@@ -88,6 +113,7 @@ async function screenshotChoice(loggedIn: boolean, yes: boolean, no: boolean): P
 async function main() {
   const [cmd, ...rest] = process.argv.slice(2);
   if (cmd === 'audit') return audit(rest);
+  if (cmd === 'batch') return batch(rest);
   if (cmd === 'login') return login(rest);
   if (cmd === 'diff') return diff(rest);
   if (cmd === 'render') return render(rest);
@@ -95,68 +121,115 @@ async function main() {
   process.exit(cmd ? 1 : 0);
 }
 
+/** Options shared by `audit` and `batch`. No defaults here: a batch must know which flags were actually passed. */
+const AUDIT_ARGS = {
+  'max-pages': { type: 'string' },
+  concurrency: { type: 'string' },
+  viewport: { type: 'string' },
+  'wait-ms': { type: 'string' },
+  timeout: { type: 'string' },
+  'keep-query': { type: 'boolean' },
+  'user-agent': { type: 'string' },
+  'same-pages': { type: 'string' },
+  'skip-best-practice': { type: 'boolean' },
+  'skip-keyboard': { type: 'boolean' },
+  'keep-consent': { type: 'boolean' },
+  'consent-selector': { type: 'string' },
+  'skip-images': { type: 'boolean' },
+  exclude: { type: 'string', multiple: true },
+  auth: { type: 'string' },
+  'logged-in-check': { type: 'string' },
+  images: { type: 'boolean', default: false },
+  'no-images': { type: 'boolean', default: false },
+  out: { type: 'string', default: 'reports' },
+} as const;
+
+type AuditArgValues = ReturnType<typeof parseArgs<{ args: string[]; options: typeof AUDIT_ARGS; allowPositionals: true }>>['values'];
+
+/** The settings given on the command line, and only those. */
+function settingsFromArgs(v: AuditArgValues): EntrySettings {
+  const num = (flag: string, x: string | undefined) => {
+    if (x === undefined) return undefined;
+    const n = Number(x);
+    if (x.trim() === '' || !Number.isFinite(n) || n < 0) throw new Error(`--${flag}: expected a non-negative number, got: ${x}`);
+    return n;
+  };
+  const s: EntrySettings = {
+    maxPages: num('max-pages', v['max-pages']),
+    concurrency: num('concurrency', v.concurrency),
+    viewport: v.viewport === undefined ? undefined : parseViewport(v.viewport),
+    waitMs: num('wait-ms', v['wait-ms']),
+    timeoutMs: num('timeout', v.timeout),
+    userAgent: v['user-agent'],
+    keepQuery: v['keep-query'],
+    samePages: v['same-pages'],
+    skipBestPractice: v['skip-best-practice'],
+    skipKeyboard: v['skip-keyboard'],
+    keepConsent: v['keep-consent'],
+    consentSelector: v['consent-selector'],
+    skipImages: v['skip-images'],
+    exclude: v.exclude,
+    auth: v.auth,
+    loggedInCheck: v['logged-in-check'],
+  };
+  return Object.fromEntries(Object.entries(s).filter(([, x]) => x !== undefined)) as EntrySettings;
+}
+
+const log = (m: string) => console.error(m);
+
 async function audit(argv: string[]) {
   if (argv.includes('--help') || argv.includes('-h')) return void process.stdout.write(USAGE);
-  const { values, positionals } = parseArgs({
-    args: argv,
-    allowPositionals: true,
-    options: {
-      'max-pages': { type: 'string', default: '25' },
-      concurrency: { type: 'string', default: '2' },
-      viewport: { type: 'string', default: '1280x800' },
-      'wait-ms': { type: 'string', default: '1000' },
-      timeout: { type: 'string', default: '30000' },
-      'keep-query': { type: 'boolean', default: false },
-      'user-agent': { type: 'string' },
-      'same-pages': { type: 'string' },
-      'skip-best-practice': { type: 'boolean', default: false },
-      'skip-keyboard': { type: 'boolean', default: false },
-      'keep-consent': { type: 'boolean', default: false },
-      'consent-selector': { type: 'string' },
-      'skip-images': { type: 'boolean', default: false },
-      exclude: { type: 'string', multiple: true },
-      auth: { type: 'string' },
-      'logged-in-check': { type: 'string' },
-      images: { type: 'boolean', default: false },
-      'no-images': { type: 'boolean', default: false },
-      out: { type: 'string', default: 'reports' },
-    },
-  });
+  const { values, positionals } = parseArgs({ args: argv, allowPositionals: true, options: AUDIT_ARGS });
   if (!positionals[0]) throw new Error('missing <url>\n\n' + USAGE);
-  const startUrl = withScheme(positionals[0]);
-  const authFile = values.auth;
-  const exclude = values.exclude ?? [];
-  const { session } = await checkAuditOptions({ startUrl, exclude, auth: authFile });
+  const options = { ...DEFAULT_AUDIT_SETTINGS, ...settingsFromArgs(values), startUrl: withScheme(positionals[0]) };
+  const { session } = await checkAuditOptions(options);
   if (session) console.error(`session: ${session}`);
-  const imageScreenshots = values['skip-images'] ? false : await screenshotChoice(!!authFile, values.images!, values['no-images']!);
-
-  const log = (m: string) => console.error(m);
-  const config = await buildAuditConfig(
-    {
-      startUrl,
-      maxPages: Number(values['max-pages']),
-      concurrency: Number(values.concurrency),
-      viewport: parseViewport(values.viewport!),
-      waitMs: Number(values['wait-ms']),
-      timeoutMs: Number(values.timeout),
-      userAgent: values['user-agent'],
-      keepQuery: values['keep-query']!,
-      samePages: values['same-pages'],
-      skipBestPractice: values['skip-best-practice']!,
-      skipKeyboard: values['skip-keyboard']!,
-      keepConsent: values['keep-consent']!,
-      consentSelector: values['consent-selector'],
-      skipImages: values['skip-images']!,
-      exclude,
-      auth: authFile,
-      loggedInCheck: values['logged-in-check'],
-      imageScreenshots,
-      out: values.out!,
-    },
-    log,
-  );
-  const result = await runSingleAudit(config, values.out!, log);
+  const imageScreenshots = options.skipImages ? false : await screenshotChoice(!!options.auth, values.images, values['no-images']);
+  const config = await buildAuditConfig({ ...options, imageScreenshots, out: values.out }, log);
+  const result = await runSingleAudit(config, values.out, log);
   console.log(JSON.stringify(auditSummary(result), null, 2));
+}
+
+async function batch(argv: string[]) {
+  if (argv.includes('--help') || argv.includes('-h')) return void process.stdout.write(USAGE);
+  const { values, positionals } = parseArgs({ args: argv, allowPositionals: true, options: { ...AUDIT_ARGS, base: { type: 'string' } } });
+  const source = positionals[0];
+  if (!source) throw new Error('missing <batch file>\n\n' + USAGE);
+  if (values['same-pages']) throw new Error('--same-pages applies to one audit: set "samePages" on the entry in a .json batch file');
+  const file = parseBatchFile(await readFile(source, 'utf8'), source);
+  const entries = resolveEntries(file, settingsFromArgs(values), values.base);
+
+  const errors = await preflight(entries);
+  if (errors.length) throw new Error(`batch not started, ${errors.length} problem(s):\n- ${errors.join('\n- ')}`);
+  for (const e of entries.filter((e) => e.options.auth)) console.error(`session for ${e.label}: ${(await checkAuditOptions(e.options)).session}`);
+
+  // Asked once for the whole batch; logged-out entries keep the single-audit default (screenshots unless --no-images).
+  const anyLoggedIn = entries.some((e) => e.options.auth && !e.options.skipImages);
+  const imageScreenshots = {
+    loggedOut: !values['no-images'],
+    loggedIn: anyLoggedIn ? await screenshotChoice(true, values.images, values['no-images']) : false,
+  };
+
+  console.error(`Batch: ${entries.length} audit(s)`);
+  const { batchDir, batch: b } = await runBatch({ name: batchName(file, source), source, entries, imageScreenshots, out: values.out, log });
+  console.log(
+    JSON.stringify(
+      {
+        batchDir,
+        summary: b.summary,
+        entries: b.entries.map((e) => ({
+          label: e.label,
+          status: e.status,
+          ...(e.status === 'ok' ? { score: e.score!.overall } : {}),
+          ...(e.delta !== undefined ? { delta: e.delta } : {}),
+          ...(e.error ? { error: e.error } : {}),
+          ...(e.reportDir ? { reportDir: join(batchDir, e.reportDir) } : {}),
+        })),
+      },
+      null,
+      2,
+    ),
+  );
 }
 
 async function login(argv: string[]) {

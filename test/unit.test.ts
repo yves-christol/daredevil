@@ -165,3 +165,38 @@ test('explanations: every in-scope axe rule has a complete plain-language entry'
   });
   assert.deepEqual(missing, [], 'add these rules to assets/explanations.json');
 });
+
+test('batch: txt and json parsing, resolution, precedence, duplicates', async () => {
+  const { parseBatchFile, resolveEntries, batchSummary, batchName } = await import('../src/batch.ts');
+  const txt = parseBatchFile('# my batch\nname: Q4 run\nbase: https://a.com/fr\n/shop   Shop pages\n\nhttps://b.com/x#frag  # trailing comment\nc.org\n', 'list.txt');
+  assert.equal(txt.name, 'Q4 run');
+  assert.equal(batchName(txt, 'x/list.txt'), 'Q4_run');
+  assert.equal(batchName({ defaults: {}, entries: [] }, 'x/my list.txt'), 'my_list');
+  const e = resolveEntries(txt, { maxPages: 5, exclude: ['cli'] });
+  assert.deepEqual(e.map((x) => x.url), ['https://a.com/shop', 'https://b.com/x#frag', 'https://c.org'], 'URLs are kept as written, like audit');
+  assert.deepEqual(e.map((x) => x.label), ['Shop pages', 'b.com/x#frag', 'c.org']);
+  assert.equal(e[0].options.maxPages, 5);
+  assert.equal(e[0].options.concurrency, 2, 'built-in default');
+
+  const json = parseBatchFile(
+    JSON.stringify({ base: 'https://a.com', defaults: { maxPages: 10, exclude: 'file', viewport: '390x844' }, entries: ['/a', { url: '/b', label: 'B', maxPages: 3, exclude: ['entry'] }] }),
+    'b.json',
+  );
+  const j = resolveEntries(json, { maxPages: 7, exclude: ['cli'] });
+  assert.deepEqual(j.map((x) => x.options.maxPages), [7, 3], 'file defaults < CLI < entry');
+  assert.deepEqual(j[1].options.exclude, ['file', 'cli', 'entry'], 'exclude patterns add up');
+  assert.deepEqual(j[0].options.viewport, { width: 390, height: 844 });
+  assert.equal(resolveEntries(json, {}, 'https://z.io')[0].url, 'https://z.io/a', '--base overrides the file');
+
+  assert.throws(() => parseBatchFile('{"entries":[{"url":"/a","maxpages":3}]}', 'c.json'), /entries\[0\]: unknown setting "maxpages"/);
+  assert.throws(() => parseBatchFile('{"entries":[{"url":"/a","images":true}]}', 'c.json'), /--images \/ --no-images/);
+  assert.throws(() => parseBatchFile('{"entries":[{"url":"/a","maxPages":"3"}]}', 'c.json'), /must be a non-negative number/);
+  assert.throws(() => resolveEntries(parseBatchFile('/a\n', 'd.txt'), {}), /is a path: give a base URL/);
+  assert.throws(() => resolveEntries(parseBatchFile('a.com/shop\nhttps://a.com/shop/\n', 'd.txt'), {}), /entries 1 and 2 audit the same scope/);
+  assert.equal(resolveEntries(parseBatchFile('{"entries":["a.com/shop",{"url":"a.com/shop","auth":".auth/a.json"}]}', 'e.json'), {}).length, 2, 'logged in is another scope');
+  assert.throws(() => resolveEntries(parseBatchFile('# nothing\n', 'f.txt'), {}), /no entries/);
+
+  const r = (status: 'ok' | 'error', overall?: number) => ({ url: 'u', label: 'l', loggedIn: false, status, ...(overall === undefined ? {} : { score: { overall } as never }) });
+  assert.deepEqual(batchSummary([r('ok', 80), r('ok', 50), r('error'), r('ok', 61), r('ok', 70)]), { entries: 5, ok: 4, notOk: 1, min: 50, median: 65.5, max: 80 });
+  assert.deepEqual(batchSummary([r('error')]), { entries: 1, ok: 0, notOk: 1 });
+});

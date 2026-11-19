@@ -6,13 +6,16 @@ runs the CLI and adds AI-assisted review, a human summary and a fix handoff.
 
 ## Commands
 - `npm run -s audit -- <url> [--max-pages N] [--same-pages prev/report.json] [--auth .auth/<host>.json]`: writes `reports/<site-slug>/<timestamp>/` (`<site-slug>_auth` when logged in)
+- `npm run -s batch -- <list.txt|list.json> [--base URL] [audit options]`: one audit per entry, each in its usual `reports/<site-slug>/<timestamp>/`, plus `reports/_batches/<name>/<timestamp>/batch.json` (file formats: `src/batch.ts` header)
 - `npm run -s login -- <url>`: headed browser, the user logs in by hand, saves the Playwright storage state to `.auth/<host>.json` (0600, git-ignored)
 - `npm run -s diff -- before.json after.json`
 - `npm run -s render -- <reportDir>`: rebuilds `report.md` / `report.html` / `fix-prompt.md`, including the agent's files if present
 - `npm test` (unit tests + an e2e test against `test/fixtures/site`), `npm run typecheck`
 
 ## Layout
-- `src/cli.ts`: argument parsing, report directory, auto-diff with the previous run of the same scope
+- `src/cli.ts`: argument parsing, the screenshot question, command dispatch
+- `src/run.ts`: one audit end to end (option checks, config, crawl, report files); shared by `audit` and `batch`
+- `src/batch.ts`: batch file parsing, option precedence, pre-flight checks, sequential run, `batch.json`
 - `src/crawl.ts`: URL normalisation and scope (`/shop` matches `/shop/**`, not `/shopping`)
 - `src/audit.ts`: browser and BFS crawl, axe scan per page, conversion of axe results
 - `src/probes.ts`: keyboard probe and image inventory (assisted, not scored)

@@ -1,26 +1,17 @@
-import type { Impact, IssueGroup, PageResult, Report } from './types.ts';
+import type { AssistedFinding, Impact, IssueGroup, PageResult, Report } from './types.ts';
+export type { AssistedFinding } from './types.ts';
 import type { ReportDiff } from './report.ts';
 import { MAX_TABS as MAX_TABS_LABEL } from './probes.ts';
 import { faviconDataUri, logoInline } from './brand.ts';
-
-/** Agent finding as written in assisted.json. */
-export interface AssistedFinding {
-  id: string;
-  category: string;
-  wcag?: string[];
-  impact?: Impact;
-  confidence?: 'high' | 'medium' | 'low';
-  page?: string;
-  selector?: string;
-  evidence: string;
-  recommendation: string;
-}
+import type { FixCategory } from './fixprompt.ts';
 
 export interface HtmlExtras {
   diff?: ReportDiff;
   assisted?: { findings: AssistedFinding[]; notes?: unknown };
   summaryMd?: string;
   hasHandoff?: boolean;
+  /** AI-ready fix prompt (fix-prompt.md) and the category plan it was built from. */
+  fixPrompt?: { markdown: string; plan: FixCategory[] };
 }
 
 // ------------------------------------------------------------------ helpers
@@ -208,6 +199,24 @@ function assistedSection(findings: AssistedFinding[]): string {
 </section>`;
 }
 
+function fixPromptSection(fp: { markdown: string; plan: FixCategory[] }, hasHandoff: boolean): string {
+  return `<section id="fix-prompt" aria-labelledby="fix-prompt-h">
+  <h2 id="fix-prompt-h">Fix prompt for an AI agent</h2>
+  <p class="lede">Paste this prompt into an AI coding agent working in the site's codebase. It lists every defect by category and asks for <strong>one merge request per category</strong>, each verified by a re-audit. Also saved as <a href="fix-prompt.md"><code>fix-prompt.md</code></a>${hasHandoff ? ', with the agent\'s <code>handoff.md</code> appended' : ''}.</p>
+  <div class="table-wrap"><table>
+    <thead><tr><th scope="col" class="num">MR</th><th scope="col">Category</th><th scope="col">Branch</th><th scope="col" class="num">Groups</th><th scope="col" class="num">AI findings</th><th scope="col" class="num">Est. gain</th></tr></thead>
+    <tbody>${fp.plan.map((c, i) => `<tr><td class="num">${i + 1}</td><th scope="row">${esc(c.title)}</th><td><code>${esc(c.branch)}</code></td><td class="num">${c.groups.length}</td><td class="num">${c.findings.length}${c.keyboardSignals.length ? ` <span class="muted">+${c.keyboardSignals.length} probe</span>` : ''}</td><td class="num">${c.gain > 0 ? signed(c.gain) : '0'}</td></tr>`).join('')}</tbody>
+  </table></div>
+  <div class="prompt-actions">
+    <button type="button" class="copy-btn" id="copy-prompt" data-target="fix-prompt-text" hidden>Copy prompt</button>
+    <span class="muted small" id="copy-status" role="status"></span>
+  </div>
+  <details class="card"><summary>Show the prompt (${fmt(fp.markdown.length)} characters)</summary>
+    <pre class="prompt" id="fix-prompt-text" tabindex="0" role="region" aria-label="Fix prompt"><code>${esc(fp.markdown)}</code></pre>
+  </details>
+</section>`;
+}
+
 function diffSection(d: ReportDiff): string {
   const cls = d.overall.delta > 0 ? 'up' : d.overall.delta < 0 ? 'down' : 'flat';
   return `<section id="change" aria-labelledby="change-h">
@@ -263,6 +272,7 @@ export function renderHtml(r: Report, extras: HtmlExtras = {}): string {
     extras.diff && ['change', 'Change'],
     ['issues', 'Issues'],
     findings.length && ['assisted', 'AI findings'],
+    extras.fixPrompt && ['fix-prompt', 'Fix prompt'],
     r.needsReview.length && ['review', 'Needs review'],
     kb.length && ['keyboard', 'Keyboard'],
     r.pages.some((p) => p.images?.some((i) => i.screenshot)) && ['images', 'Images'],
@@ -303,7 +313,7 @@ ${faviconDataUri() ? `<link rel="icon" href="${faviconDataUri()}">` : ''}
       <li><strong>${fmt(s.violations.byImpact.critical)}</strong><span>critical</span></li>
       <li><strong>${fmt(s.needsReview.nodes)}</strong><span>to review</span></li>
     </ul>
-    ${extras.hasHandoff ? '<p class="handoff">A fix plan for an AI agent is in <code>handoff.md</code>, next to this file.</p>' : ''}
+    ${extras.fixPrompt ? `<p class="handoff">Ready to fix? <a href="#fix-prompt">Copy the AI fix prompt</a>: one merge request per category.</p>` : extras.hasHandoff ? '<p class="handoff">A fix plan for an AI agent is in <code>handoff.md</code>, next to this file.</p>' : ''}
   </div>
   <div class="hero-score">
     ${ring(s.score.overall)}
@@ -343,6 +353,8 @@ ${extras.diff ? diffSection(extras.diff) : ''}
 </section>
 
 ${findings.length ? assistedSection(findings) : ''}
+
+${extras.fixPrompt ? fixPromptSection(extras.fixPrompt, !!extras.hasHandoff) : ''}
 
 ${r.needsReview.length ? `<section id="review" aria-labelledby="review-h">
   <h2 id="review-h">Needs review <span class="count">${r.needsReview.length}</span></h2>
@@ -426,6 +438,20 @@ const JS = `
       label();
     });
   }
+})();
+(function () {
+  // Copy the fix prompt. The button stays hidden without the Clipboard API (the text remains selectable).
+  var btn = document.getElementById('copy-prompt');
+  var status = document.getElementById('copy-status');
+  if (!btn || !navigator.clipboard) return;
+  btn.hidden = false;
+  btn.addEventListener('click', function () {
+    var el = document.getElementById(btn.getAttribute('data-target'));
+    navigator.clipboard.writeText(el ? el.textContent : '').then(
+      function () { status.textContent = 'Prompt copied to the clipboard.'; },
+      function () { status.textContent = 'Copy failed: open the prompt and select it manually.'; }
+    );
+  });
 })();
 (function () {
   var buttons = document.querySelectorAll('.filters button');
@@ -566,6 +592,9 @@ h4 { font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacin
 .filters button { font: inherit; font-size: 14px; border: 1px solid var(--control); background: transparent; color: var(--text); border-radius: 999px; padding: .3rem .9rem; cursor: pointer; }
 .filters button[aria-pressed="true"] { background: var(--focus); border-color: var(--focus); color: var(--on-focus); font-weight: 600; }
 .filters button[aria-pressed="true"] .muted { color: inherit; }
+.prompt-actions { display: flex; align-items: center; gap: .8rem; flex-wrap: wrap; margin: 1rem 0 .8rem; }
+.copy-btn { font: inherit; font-size: 14px; font-weight: 600; border: 1px solid var(--focus); background: var(--focus); color: var(--on-focus); border-radius: 999px; padding: .4rem 1rem; cursor: pointer; }
+pre.prompt { max-height: 32rem; overflow-y: auto; margin-top: .8rem; }
 
 .issues { list-style: none; padding: 0; margin: 0; display: grid; gap: .6rem; }
 .issue details { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; }

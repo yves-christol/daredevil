@@ -4,7 +4,7 @@ import { inScope, normalizeUrl, scopeFromUrl } from '../src/crawl.ts';
 import { levelOf, principleOf, successCriteria } from '../src/wcag.ts';
 import { nodeSignature, normalizeSelector } from '../src/group.ts';
 import { scorePage } from '../src/score.ts';
-import type { PageResult, RuleResult } from '../src/types.ts';
+import type { PageResult, Report, RuleResult } from '../src/types.ts';
 
 test('scope: /shop includes subpaths but not /shopping', () => {
   const s = scopeFromUrl('https://www.mysite.com/shop/');
@@ -72,4 +72,40 @@ test('markdownToHtml escapes and renders the agent summary subset', async () => 
   assert.match(html, /<code>&lt;b&gt;<\/code>/);
   assert.match(html, /<ul><li>a<ul><li>b<\/li><\/ul><\/li><\/ul>/);
   assert.match(html, /<th scope="col">H<\/th>/);
+});
+
+test('fix prompt: categories, one MR per category, safe fences, handoff appended', async () => {
+  const { categorizeRule, categorizeFinding, buildFixPlan, fixPromptMarkdown } = await import('../src/fixprompt.ts');
+  assert.equal(categorizeRule('color-contrast'), 'contrast');
+  assert.equal(categorizeRule('aria-required-parent'), 'aria');
+  assert.equal(categorizeRule('aria-input-field-name'), 'names');
+  assert.equal(categorizeRule('landmark-unique'), 'structure');
+  assert.equal(categorizeRule('list'), 'structure');
+  assert.equal(categorizeRule('image-alt'), 'images');
+  assert.equal(categorizeRule('some-future-rule', ['2.4.7']), 'keyboard');
+  assert.equal(categorizeRule('some-future-rule'), 'other');
+  assert.equal(categorizeFinding({ id: 'A1', category: 'alt-quality', evidence: '', recommendation: '' }), 'images');
+  assert.equal(categorizeFinding({ id: 'A2', category: 'needs-review', wcag: ['1.4.3'], evidence: '', recommendation: '' }), 'contrast');
+
+  const group = (ruleId: string, gain: number, html = '<b>') => ({
+    id: ruleId + '-id', ruleId, impact: 'serious' as const, help: ruleId, description: '', helpUrl: 'https://x', wcag: ['1.1.1'],
+    level: 'A' as const, principle: 'perceivable' as const, scored: true, signature: 's', occurrences: 1, pageCount: 1, pages: ['/'],
+    patterns: ['p'], examples: [{ page: '/', selector: 'p', html }], estimatedScoreGain: gain,
+  });
+  const report = {
+    config: { scope: { origin: 'https://a.com', pathPrefix: '/shop' } },
+    summary: { score: { overall: 50, byLevel: { A: 50, AA: 90 } }, pagesScanned: 3, pagesFailed: 0, violations: { groups: 3, nodes: 3 }, needsReview: { groups: 0, nodes: 0 } },
+    tool: { version: 't', axeVersion: 'x', scoringVersion: '1' }, generatedAt: 'now', needsReview: [], pages: [],
+    issues: [group('color-contrast', 1), group('button-name', 5, '<button>```evil```</button>'), group('link-name', 2)],
+  } as unknown as Report;
+  const plan = buildFixPlan(report);
+  assert.deepEqual(plan.map((c) => c.id), ['names', 'contrast']);
+  assert.equal(plan[0].gain, 7);
+  const md = fixPromptMarkdown(report, { reportDir: '/r', handoffMd: '# Handoff\n\n## Tasks\nuse group ids' });
+  assert.match(md, /## MR 1: Accessible names.*`a11y\/names`/);
+  assert.match(md, /## MR 2: Colour and contrast/);
+  assert.match(md, /one merge request per category/);
+  assert.match(md, /--same-pages \/r\/report\.json/);
+  assert.ok(md.includes('````html\n    <button>```evil```</button>\n    ````'), 'fence must outlast backticks in site HTML');
+  assert.match(md, /## Appendix: auditor fix guidance[\s\S]*### Handoff[\s\S]*#### Tasks/);
 });

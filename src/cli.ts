@@ -2,12 +2,15 @@
 import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { parseArgs } from 'node:util';
-import { basename, dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { basename, dirname, join, resolve } from 'node:path';
 import type { AuditConfig, Report } from './types.ts';
 import { scopeFromUrl } from './crawl.ts';
 import { runAudit } from './audit.ts';
 import { buildReport, diffMarkdown, diffReports, reportMarkdown } from './report.ts';
 import { renderHtml, type HtmlExtras } from './html.ts';
+import { buildFixPlan, fixPromptMarkdown } from './fixprompt.ts';
+import type { AssistedFinding } from './types.ts';
 
 const VERSION = '0.1.0';
 const WCAG_TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'];
@@ -17,8 +20,8 @@ const USAGE = `daredevil — accessibility audit (axe-core + Playwright)
 Usage:
   daredevil audit <url> [options]     Crawl pages under <url>'s path and audit them
   daredevil diff <before.json> <after.json>
-  daredevil render <reportDir>        Rebuild report.md / report.html, including the agent's
-                                      summary.md, assisted.json and handoff.md if present
+  daredevil render <reportDir>        Rebuild report.md / report.html / fix-prompt.md, including the
+                                      agent's summary.md, assisted.json and handoff.md if present
 
 Audit options:
   --max-pages <n>        Max pages to scan (default 25)
@@ -121,8 +124,9 @@ async function audit(argv: string[]) {
   const d = previous ? diffReports(previous, report) : undefined;
 
   await writeFile(join(reportDir, 'report.json'), JSON.stringify(report, null, 2));
+  const fixPrompt = await writeFixPrompt(report, reportDir);
   await writeFile(join(reportDir, 'report.md'), reportMarkdown(report, d));
-  await writeFile(join(reportDir, 'report.html'), renderHtml(report, { diff: d }));
+  await writeFile(join(reportDir, 'report.html'), renderHtml(report, { diff: d, fixPrompt }));
 
   const s = report.summary;
   console.log(
@@ -136,11 +140,24 @@ async function audit(argv: string[]) {
         pagesFailed: s.pagesFailed,
         issueGroups: s.violations.groups,
         violationNodes: s.violations.nodes,
+        fixPrompt: join(reportDir, 'fix-prompt.md'),
       },
       null,
       2,
     ),
   );
+}
+
+/** Write fix-prompt.md (one merge request per category) and return it for the HTML report. */
+async function writeFixPrompt(report: Report, dir: string, findings?: AssistedFinding[], handoffMd?: string) {
+  const markdown = fixPromptMarkdown(report, {
+    findings,
+    handoffMd,
+    reportDir: resolve(dir),
+    toolDir: resolve(dirname(fileURLToPath(import.meta.url)), '..'),
+  });
+  await writeFile(join(dir, 'fix-prompt.md'), markdown);
+  return { markdown, plan: buildFixPlan(report, findings) };
 }
 
 /** The report.json run just before `stamp` for the same site/scope, if any. */
@@ -176,7 +193,9 @@ async function render(argv: string[]) {
     }
   }
   extras.summaryMd = await opt('summary.md');
-  extras.hasHandoff = existsSync(join(dir, 'handoff.md'));
+  const handoffMd = await opt('handoff.md');
+  extras.hasHandoff = handoffMd !== undefined;
+  extras.fixPrompt = await writeFixPrompt(report, dir, extras.assisted?.findings, handoffMd);
   await writeFile(join(dir, 'report.md'), reportMarkdown(report, extras.diff));
   await writeFile(join(dir, 'report.html'), renderHtml(report, extras));
   console.log(join(dir, 'report.html'));

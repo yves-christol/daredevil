@@ -146,3 +146,16 @@ export interface Report {
   needsReview: IssueGroup[];
   pages: PageResult[];
 }
+
+/** Agent finding as written in assisted.json. */
+export interface AssistedFinding {
+  id: string;
+  category: string;
+  wcag?: string[];
+  impact?: Impact;
+  confidence?: 'high' | 'medium' | 'low';
+  page?: string;
+  selector?: string;
+  evidence: string;
+  recommendation: string;
+}

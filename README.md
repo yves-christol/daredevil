@@ -75,6 +75,7 @@ Each run writes to `reports/<site-and-path>/<timestamp>/`:
 | `report.json` | machines and AIs: the full structured result | engine |
 | `report.html` | humans: a designed, self-contained report (score panel, filterable issues, AI findings, image gallery…), re-rendered with the agent's files | engine (`render`) |
 | `report.md` | humans who want plain text: score, prioritised issues, evidence | engine |
+| `fix-prompt.md` | an AI coding agent in the site's repo: a ready-to-paste prompt, one merge request per category (also in `report.html`, with a copy button) | engine (`audit` / `render`) |
 | `assets/*.png` | element screenshots of images, for alt-text review | engine |
 | `summary.md` | humans: a one-page executive summary | agent |
 | `assisted.json` | machines: the agent's findings, with confidence levels | agent |
@@ -260,6 +261,25 @@ When the same site is re-audited, this comparison is added automatically to `rep
 1. **Context**: site, scope, score, file paths, and the verification command.
 2. **Tasks**: one per issue group, in priority order. Each task has Where (patterns, pages), Evidence (HTML, failure summary), Fix guidance (specific to the evidence) and Done when (the group id is gone from a `--same-pages` re-run).
 3. **Cautions**: fixes that probably belong in a design system, CMS content or a third-party widget, not in page markup.
+
+### Fix prompt
+
+`fix-prompt.md` is a self-contained prompt to paste into an AI coding agent working in the audited site's codebase. The engine writes it on every `audit` and `render` (so it includes the agent's `assisted.json` findings and appends `handoff.md` once they exist), and `report.html` shows it with a **Copy prompt** button.
+
+It buckets every issue group and assisted finding into a fix category, and asks for **one merge request per category**, each on its own branch (`a11y/<category>`), independent of the others:
+
+| Category | Branch | Typical rules |
+|---|---|---|
+| ARIA roles and attributes | `a11y/aria` | `aria-*`, `presentation-role-conflict` |
+| Accessible names | `a11y/names` | `button-name`, `link-name`, `label-content-name-mismatch` |
+| Form labels and inputs | `a11y/forms` | `label`, `autocomplete-valid`, `select-name` |
+| Images and text alternatives | `a11y/images` | `image-alt`, `svg-img-alt`, assisted alt-text findings |
+| Colour and contrast | `a11y/contrast` | `color-contrast`, `link-in-text-block` |
+| Page structure and semantics | `a11y/structure` | `region`, `landmark-*`, `heading-order`, `list`, `html-has-lang` |
+| Keyboard and focus | `a11y/keyboard` | `tabindex`, `nested-interactive`, `scrollable-region-focusable`, probe signals |
+| Media, motion and timing | `a11y/media` | `video-caption`, `meta-refresh` |
+
+Rules not listed fall back to their WCAG success criterion (see `src/fixprompt.ts`). Categories are ordered by total estimated gain. The prompt also sets the workflow (explore, plan and confirm, fix at the shared component or token, verify with a `--same-pages` re-audit), guard rails (fix the cause, never silence the checker; flag third-party and CMS items instead of patching them) and an MR title and description template.
 
 **How the agent's files reach the disk.** Claude Code does not let subagents write report files, so daredevil returns its three deliverables as delimited blocks in its final message. The main session writes them into the report folder and runs `npm run -s render -- <reportDir>`, which folds them into `report.html` (see "When the daredevil subagent returns" in `CLAUDE.md`).
 

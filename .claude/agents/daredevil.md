@@ -108,6 +108,8 @@ Use plain Markdown: headings, paragraphs, lists, simple tables, `code`, **bold**
 
 ### `handoff.md` (for an AI that will plan and apply fixes)
 
+The engine builds `fix-prompt.md` itself: a ready-to-paste prompt that buckets every group and every `assisted.json` finding into fix categories (one merge request each) and sets the workflow. `render` appends your `handoff.md` to it as "auditor fix guidance", so your value here is **specific fix guidance and cautions**, not workflow instructions. Always cite group ids, since the prompt's numbering differs from yours.
+
 Write it to be read and acted on directly. Structure:
 1. **Context**: site, scope, score, file locations (`report.json`, `assisted.json`), and the verification command: `npm run -s audit -- <url> --same-pages <this report.json>`.
 2. **Tasks**: one per issue group, in `issues[]` order (then assisted findings by impact). Each task contains:

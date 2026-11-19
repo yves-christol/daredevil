@@ -7,6 +7,7 @@ import { serveFixtures } from './helpers.ts';
 import { runAudit } from '../src/audit.ts';
 import { buildReport } from '../src/report.ts';
 import { renderHtml } from '../src/html.ts';
+import { buildFixPlan, fixPromptMarkdown } from '../src/fixprompt.ts';
 import { scopeFromUrl } from '../src/crawl.ts';
 import type { AuditConfig } from '../src/types.ts';
 
@@ -55,6 +56,15 @@ test('audits the /shop subtree of the fixture site', { timeout: 120_000 }, async
     assert.match(html, /<html lang="en">/);
     assert.ok(!html.includes('<button class="icon-btn"></button>'), 'raw site HTML must be escaped');
     assert.ok(html.includes('&lt;button class=&quot;icon-btn&quot;&gt;'));
+
+    // fix prompt: every group lands in exactly one MR category, and the prompt is embedded escaped
+    const plan = buildFixPlan(report);
+    assert.equal(plan.reduce((a, c) => a + c.groups.length, 0), report.issues.length);
+    const markdown = fixPromptMarkdown(report, { reportDir: dir });
+    for (const g of report.issues) assert.ok(markdown.includes(g.id), `group ${g.id} missing from fix prompt`);
+    const withPrompt = renderHtml(report, { fixPrompt: { markdown, plan } });
+    assert.match(withPrompt, /id="fix-prompt"/);
+    assert.ok(!withPrompt.includes('<button class="icon-btn"></button>'), 'fix prompt must be escaped too');
   } finally {
     server.close();
   }

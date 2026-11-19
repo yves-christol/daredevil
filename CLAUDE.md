@@ -7,7 +7,7 @@ runs the CLI and adds AI-assisted review, a human summary and a fix handoff.
 ## Commands
 - `npm run -s audit -- <url> [--max-pages N] [--same-pages prev/report.json]`: writes `reports/<site-slug>/<timestamp>/`
 - `npm run -s diff -- before.json after.json`
-- `npm run -s render -- <reportDir>`: rebuilds `report.md` / `report.html`, including the agent's files if present
+- `npm run -s render -- <reportDir>`: rebuilds `report.md` / `report.html` / `fix-prompt.md`, including the agent's files if present
 - `npm test` (unit tests + an e2e test against `test/fixtures/site`), `npm run typecheck`
 
 ## Layout
@@ -18,6 +18,7 @@ runs the CLI and adds AI-assisted review, a human summary and a fix handoff.
 - `src/group.ts`: root-cause signatures and grouping (group `id` is stable across runs)
 - `src/score.ts`: scoring model, see the header comment
 - `src/report.ts`: report.json assembly, diff, markdown
+- `src/fixprompt.ts`: `fix-prompt.md`, the AI fix prompt: findings bucketed by fix category (rule table, then WCAG fallback), one merge request per category
 - `src/html.ts`: self-contained HTML report (escapes all site-derived content; must itself stay accessible)
 - `src/consent.ts`: cookie-dialog dismissal ("reject", never "accept")
 - `src/brand.ts`: embeds `assets/logo.svg` (inline header logo + favicon)

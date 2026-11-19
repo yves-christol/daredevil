@@ -38,5 +38,5 @@ Subagents cannot write report files, so the agent returns its deliverables as te
 - Any change to the scoring formula or constants: bump `SCORING_VERSION` in `src/score.ts`. Changing grouping signatures changes group ids: note it, since diffs across that change show false "fixed/new".
 - Code passed to `page.evaluate` must not contain named functions (`const f = () => …`): tsx/esbuild injects a `__name` helper that does not exist in the browser.
 - The score is computed only by code; the agent never adjusts it.
-- Logged-in audits: never handle credentials (the user logs in in the headed window), never put session-file content in a report or a message, never follow logout links (`LOGOUT_URL`), and keep image screenshots off by default (personal data).
+- Logged-in audits: never handle credentials (the user logs in in the headed window), never put session-file content in a report or a message, never follow logout or account-changing links (`LOGOUT_URL`), and keep image screenshots off by default (personal data).
 - Keep dependency versions pinned (exact): axe-core upgrades change rules and therefore scores.

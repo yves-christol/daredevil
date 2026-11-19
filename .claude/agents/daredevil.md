@@ -52,7 +52,7 @@ When the pages to audit require an account (customer area, back office, the star
    `! npm run -s login -- <url>`
    A browser window opens; they log in (captcha, SMS code included) and the session is saved once they are back on the site. **Never ask for, type or handle their credentials**, and never read or print the session file's content: it gives access to the account.
 2. Run `npm run -s audit -- <url> --auth .auth/<host>.json [--logged-in-check '<css visible only when logged in>']`.
-   - Logout links are never followed. Add `--exclude '<regex>'` for other links with side effects (delete, cancel, unsubscribe, pay).
+   - Logout links and known account-changing flows (`retirer`, `confirmation`, `changer-iban`) are never followed. Add `--exclude '<regex>'` for other links with side effects (delete, cancel, unsubscribe, pay).
    - Pages that land on a login page are marked `auth-lost`; after 2 in a row the crawl stops and `summary.stopped` says why. Do not report a score from a run where most pages lost the session: ask the user to log in again.
    - If pages show as `ok` but are clearly logged-out content, re-run with `--logged-in-check` (e.g. the account menu).
    - Image screenshots are off by default, since they would capture personal data. Use `--images` only if the user asks for alt-text review and accepts that.

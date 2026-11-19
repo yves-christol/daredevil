@@ -40,8 +40,8 @@ Audit options:
   --skip-keyboard        Skip the keyboard probe
   --skip-images          Skip image screenshots for alt-text review
   --exclude <regex>      Never visit URLs matching this (case-insensitive; repeatable)
-  --auth <file>          Audit logged in, with a session saved by 'daredevil login'. Logout links
-                         are excluded, pages that land on a login page are marked auth-lost, and
+  --auth <file>          Audit logged in, with a session saved by 'daredevil login'. Logout and
+                         account-changing links are excluded, pages that land on a login page are marked auth-lost, and
                          the crawl stops after 2 in a row. Image screenshots are off (personal data)
   --logged-in-check <s>  CSS selector visible only when logged in (stricter session check)
   --images               With --auth: capture image screenshots anyway

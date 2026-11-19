@@ -11,8 +11,12 @@ import { chromium, type Browser, type BrowserContext, type Page } from 'playwrig
 
 export type StorageState = Awaited<ReturnType<BrowserContext['storageState']>>;
 
-/** Links never followed during an authenticated crawl: visiting them ends the session. */
-export const LOGOUT_URL = /log-?out|log-?off|sign-?out|d[eé]connexion|d[eé]connecter|disconnect/i;
+/**
+ * Links never followed during an authenticated crawl: logout links (visiting them ends the
+ * session) and account-changing flows seen in practice (removing a contract, confirmation
+ * steps, changing bank details), which a crawl should not open even if a GET is harmless.
+ */
+export const LOGOUT_URL = /log-?out|log-?off|sign-?out|d[eé]connexion|d[eé]connecter|disconnect|retirer|confirmation|changer-iban/i;
 
 /** Path segments that identify a login page on the audited origin. */
 const LOGIN_PATH = /(^|\/)(login|log-in|signin|sign-in|connexion|se-connecter|authenticate|authentication|auth|identification|sso|oauth2?)(\/|\.|$)/i;

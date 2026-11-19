@@ -119,7 +119,7 @@ test('auth: login pages, logout links, session lifetime', () => {
   assert.ok(!isLoginUrl(`${o}/factures-paiement`, o));
   assert.ok(!isLoginUrl(`${o}/authors`, o), 'login words must be whole path segments');
 
-  for (const u of ['/logout', '/account/log-out.html', '/se-deconnecter', '/deconnexion', '/auth/signout']) assert.ok(LOGOUT_URL.test(u), u);
+  for (const u of ['/logout', '/account/log-out.html', '/se-deconnecter', '/deconnexion', '/auth/signout', '/retirer-contrat/123', '/factures/passage-facture-papier/confirmation', '/facture-paiement/1/changer-iban/vos-informations']) assert.ok(LOGOUT_URL.test(u), u);
   for (const u of ['/logos', '/account/invoices', '/connexion-internet']) assert.ok(!LOGOUT_URL.test(u), u);
 
   assert.equal(defaultStateFile('https://espace-client.orange.fr/x'), '.auth/espace-client.orange.fr.json');

@@ -1,21 +1,14 @@
 #!/usr/bin/env -S npx tsx
-import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
+import { readFile, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { parseArgs } from 'node:util';
 import { createInterface } from 'node:readline/promises';
-import { fileURLToPath } from 'node:url';
-import { basename, dirname, join, resolve } from 'node:path';
-import type { AuditConfig, Report } from './types.ts';
-import { scopeFromUrl } from './crawl.ts';
-import { WCAG_TAGS } from './wcag.ts';
-import { runAudit } from './audit.ts';
-import { buildReport, diffMarkdown, diffReports, reportMarkdown } from './report.ts';
+import { basename, dirname, join } from 'node:path';
+import type { Report } from './types.ts';
+import { diffMarkdown, diffReports, reportMarkdown } from './report.ts';
 import { renderHtml, type HtmlExtras } from './html.ts';
-import { buildFixPlan, fixPromptMarkdown } from './fixprompt.ts';
-import { LOGOUT_URL, captureSession, defaultStateFile, loadAuthState, sessionLifetime } from './auth.ts';
-import type { AssistedFinding } from './types.ts';
-
-const VERSION = '0.1.0';
+import { captureSession, defaultStateFile } from './auth.ts';
+import { auditSummary, buildAuditConfig, checkAuditOptions, parseViewport, previousReport, runSingleAudit, withScheme, writeFixPrompt } from './run.ts';
 
 const USAGE = `daredevil — accessibility audit (axe-core + Playwright)
 
@@ -129,105 +122,41 @@ async function audit(argv: string[]) {
       out: { type: 'string', default: 'reports' },
     },
   });
-  let startUrl = positionals[0];
-  if (!startUrl) throw new Error('missing <url>\n\n' + USAGE);
-  if (!/^https?:\/\//.test(startUrl)) startUrl = 'https://' + startUrl;
-
+  if (!positionals[0]) throw new Error('missing <url>\n\n' + USAGE);
+  const startUrl = withScheme(positionals[0]);
   const authFile = values.auth;
-  if (authFile) {
-    const state = await loadAuthState(authFile);
-    const life = sessionLifetime(state, startUrl);
-    if (life.expired) throw new Error(`session in ${authFile}: ${life.text}\nLog in again with: npm run -s login -- ${startUrl}`);
-    console.error(`session: ${life.text}`);
-  }
+  const exclude = values.exclude ?? [];
+  const { session } = await checkAuditOptions({ startUrl, exclude, auth: authFile });
+  if (session) console.error(`session: ${session}`);
   const imageScreenshots = values['skip-images'] ? false : await screenshotChoice(!!authFile, values.images!, values['no-images']!);
-  for (const e of values.exclude ?? []) {
-    try {
-      new RegExp(e);
-    } catch {
-      throw new Error(`--exclude: invalid regular expression: ${e}`);
-    }
-  }
 
-  // Follow redirects (e.g. mysite.com -> www.mysite.com) so the scope matches real URLs.
-  // Not when logged in: this request carries no session, so it would follow the login redirect.
-  if (!authFile) try {
-    const res = await fetch(startUrl, { redirect: 'follow', signal: AbortSignal.timeout(15000) });
-    if (res.url && res.url !== startUrl) {
-      console.error(`start URL redirects to ${res.url}`);
-      startUrl = res.url;
-    }
-  } catch {
-    /* let the browser report the failure */
-  }
-
-  const [w, h] = values.viewport!.split('x').map(Number);
-  let fixedPages: string[] | undefined;
-  if (values['same-pages']) {
-    const prev: Report = JSON.parse(await readFile(values['same-pages'], 'utf8'));
-    fixedPages = prev.pages.filter((p) => p.status === 'ok').map((p) => p.url);
-  }
-  const config: AuditConfig = {
-    startUrl,
-    scope: scopeFromUrl(startUrl),
-    maxPages: Math.max(Number(values['max-pages']), fixedPages?.length ?? 0),
-    concurrency: Number(values.concurrency),
-    viewport: { width: w, height: h },
-    waitMs: Number(values['wait-ms']),
-    timeoutMs: Number(values.timeout),
-    userAgent: values['user-agent'],
-    keepQuery: values['keep-query']!,
-    tags: values['skip-best-practice'] ? WCAG_TAGS : [...WCAG_TAGS, 'best-practice'],
-    keyboardProbe: !values['skip-keyboard'],
-    dismissConsent: !values['keep-consent'],
-    consentSelector: values['consent-selector'],
-    imageInventory: !values['skip-images'],
-    imageScreenshots,
-    fixedPages,
-    exclude: [...(values.exclude ?? []), ...(authFile ? [LOGOUT_URL.source] : [])],
-    auth: authFile ? { stateFile: authFile, loggedInCheck: values['logged-in-check'] } : undefined,
-  };
-  if (values['logged-in-check'] && !authFile) console.error('--logged-in-check is ignored without --auth');
-
-  // Logged-in runs get their own folder: auto-diffing them with logged-out runs would be meaningless.
-  const slug = (config.scope.origin.replace(/^https?:\/\//, '') + config.scope.pathPrefix).replace(/[^a-zA-Z0-9.-]+/g, '_') + (authFile ? '_auth' : '');
-  const siteDir = join(values.out!, slug);
-  const stamp = new Date().toISOString().replace(/[-:]/g, '').replace(/\..+/, '').replace('T', '-');
-  const reportDir = join(siteDir, stamp);
-  await mkdir(reportDir, { recursive: true });
-
-  const previous = await previousReport(siteDir, stamp);
-
-  console.error(`Auditing ${config.scope.origin}${config.scope.pathPrefix || '/'} (max ${config.maxPages} pages)`);
-  const run = await runAudit(config, reportDir, (m) => console.error(m));
-  const report = buildReport(config, run.pages, { version: VERSION, axeVersion: run.axeVersion, browser: run.browser, stopped: run.stopped });
-  const d = previous ? diffReports(previous, report) : undefined;
-
-  await writeFile(join(reportDir, 'report.json'), JSON.stringify(report, null, 2));
-  const fixPrompt = await writeFixPrompt(report, reportDir);
-  await writeFile(join(reportDir, 'report.md'), reportMarkdown(report, d));
-  await writeFile(join(reportDir, 'report.html'), renderHtml(report, { diff: d, fixPrompt }));
-
-  const s = report.summary;
-  console.log(
-    JSON.stringify(
-      {
-        reportDir,
-        score: s.score.overall,
-        delta: d?.overall.delta,
-        comparableWithPrevious: d?.comparable,
-        pagesScanned: s.pagesScanned,
-        pagesFailed: s.pagesFailed,
-        ...(authFile ? { pagesAuthLost: s.pagesAuthLost } : {}),
-        ...(s.stopped ? { stopped: s.stopped } : {}),
-        issueGroups: s.violations.groups,
-        violationNodes: s.violations.nodes,
-        fixPrompt: join(reportDir, 'fix-prompt.md'),
-      },
-      null,
-      2,
-    ),
+  const log = (m: string) => console.error(m);
+  const config = await buildAuditConfig(
+    {
+      startUrl,
+      maxPages: Number(values['max-pages']),
+      concurrency: Number(values.concurrency),
+      viewport: parseViewport(values.viewport!),
+      waitMs: Number(values['wait-ms']),
+      timeoutMs: Number(values.timeout),
+      userAgent: values['user-agent'],
+      keepQuery: values['keep-query']!,
+      samePages: values['same-pages'],
+      skipBestPractice: values['skip-best-practice']!,
+      skipKeyboard: values['skip-keyboard']!,
+      keepConsent: values['keep-consent']!,
+      consentSelector: values['consent-selector'],
+      skipImages: values['skip-images']!,
+      exclude,
+      auth: authFile,
+      loggedInCheck: values['logged-in-check'],
+      imageScreenshots,
+      out: values.out!,
+    },
+    log,
   );
+  const result = await runSingleAudit(config, values.out!, log);
+  console.log(JSON.stringify(auditSummary(result), null, 2));
 }
 
 async function login(argv: string[]) {
@@ -242,9 +171,8 @@ async function login(argv: string[]) {
       headless: { type: 'boolean', default: false },
     },
   });
-  let url = positionals[0];
-  if (!url) throw new Error('missing <url>\n\n' + USAGE);
-  if (!/^https?:\/\//.test(url)) url = 'https://' + url;
+  if (!positionals[0]) throw new Error('missing <url>\n\n' + USAGE);
+  const url = withScheme(positionals[0]);
   const out = values.out ?? defaultStateFile(url);
   console.error(`Opening ${url} in a browser window.`);
   const res = await captureSession({
@@ -258,26 +186,6 @@ async function login(argv: string[]) {
   console.error(`Saved session (${res.reason}) to ${res.file}: ${res.lifetime}.`);
   console.error(`This file gives access to the account: keep it private. Delete it when done.`);
   console.log(JSON.stringify({ sessionFile: res.file, finalUrl: res.finalUrl, saved: res.reason, lifetime: res.lifetime, audit: `npm run -s audit -- ${url} --auth ${res.file}` }, null, 2));
-}
-
-/** Write fix-prompt.md (one merge request per category) and return it for the HTML report. */
-async function writeFixPrompt(report: Report, dir: string, findings?: AssistedFinding[], handoffMd?: string) {
-  const markdown = fixPromptMarkdown(report, {
-    findings,
-    handoffMd,
-    reportDir: resolve(dir),
-    toolDir: resolve(dirname(fileURLToPath(import.meta.url)), '..'),
-  });
-  await writeFile(join(dir, 'fix-prompt.md'), markdown);
-  return { markdown, plan: buildFixPlan(report, findings) };
-}
-
-/** The report.json run just before `stamp` for the same site/scope, if any. */
-async function previousReport(siteDir: string, stamp: string): Promise<Report | undefined> {
-  if (!existsSync(siteDir)) return undefined;
-  const dirs = (await readdir(siteDir)).filter((d) => d < stamp && existsSync(join(siteDir, d, 'report.json'))).sort();
-  const last = dirs.at(-1);
-  return last ? JSON.parse(await readFile(join(siteDir, last, 'report.json'), 'utf8')) : undefined;
 }
 
 async function diff(argv: string[]) {

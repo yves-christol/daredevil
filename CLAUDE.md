@@ -21,6 +21,7 @@ runs the CLI and adds AI-assisted review, a human summary and a fix handoff.
 - `src/crawl.ts`: URL normalisation and scope (`/shop` matches `/shop/**`, not `/shopping`); several scopes per audit (`startUrls` / `scopes` in the config, only when 2+), conflicts (same / nested scopes)
 - `src/audit.ts`: browser and BFS crawl, axe scan per page, conversion of axe results
 - `src/probes.ts`: keyboard probe and image inventory (assisted, not scored)
+- `src/keyboard.ts`: plain-language reading of the keyboard probe (one verdict per check: finding, why it matters, what to do), shared by `report.html` and `report.md`
 - `src/group.ts`: root-cause signatures and grouping (group `id` is stable across runs)
 - `src/score.ts`: scoring model, see the header comment
 - `src/report.ts`: report.json assembly, diff, markdown

@@ -6,6 +6,7 @@ import { nodeSignature, normalizeSelector } from '../src/group.ts';
 import { scorePage } from '../src/score.ts';
 import { LOGOUT_URL, defaultStateFile, isLoginUrl, sessionLifetime } from '../src/auth.ts';
 import type { PageResult, Report, RuleResult } from '../src/types.ts';
+import { keyboardChecks } from '../src/keyboard.ts';
 
 test('scope: /shop includes subpaths but not /shopping', () => {
   const s = scopeFromUrl('https://www.mysite.com/shop/');
@@ -417,4 +418,22 @@ test('batch: --same-pages-from maps each entry to its scope in another batch', a
   assert.equal(latest[0].options.samePages, e[0].options.samePages, "'latest' finds the last complete batch of this name");
   await assert.rejects(applySamePagesFrom(make(), 'latest', { out, name: 'other' }), /no complete batch named "other"/);
   await assert.rejects(applySamePagesFrom(make(), join(out, 'nope'), { out, name: 'q' }), /no such batch file/);
+});
+
+test('keyboard checks: plain-language verdicts from the probe', () => {
+  const page = (path: string, keyboard: PageResult['keyboard']) => ({ path, keyboard }) as PageResult;
+  const ok = { tabStops: 30, tabbableElements: 30, hasSkipLink: true, noVisibleFocus: [] };
+  const clean = keyboardChecks([page('/a', ok), page('/b', ok)]);
+  assert.ok(clean.every((c) => c.ok && c.todo === ''));
+  const bad = keyboardChecks([
+    page('/a', { ...ok, tabStops: 5, hasSkipLink: false, noVisibleFocus: [{ selector: 'div > iframe#chat', html: '<iframe>' }], possibleTrap: 'div > iframe#chat' }),
+    page('/b', { ...ok, tabStops: 80, capped: true, tabbableElements: 200 }),
+  ]);
+  const by = Object.fromEntries(bad.map((c) => [c.id, c]));
+  assert.deepEqual(bad.map((c) => c.id), ['trap', 'focus', 'reach', 'skip'], 'worst first');
+  assert.deepEqual(by.reach.pages, ['/a'], 'a capped page is not low reach');
+  assert.deepEqual(by.skip.pages, ['/a']);
+  assert.equal(by.focus.elements?.length, 1);
+  assert.match(by.trap.todo, /iframe/, 'iframe caveat');
+  assert.ok(bad.every((c) => !c.ok && c.why && c.todo));
 });

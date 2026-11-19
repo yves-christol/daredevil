@@ -1,6 +1,7 @@
 import type { AuditConfig, Impact, IssueGroup, PageResult, Report, ScoreBreakdown } from './types.ts';
 import { SCHEMA_VERSION } from './types.ts';
 import { buildGroups } from './group.ts';
+import { keyboardChecks } from './keyboard.ts';
 import { scopesLabel, startUrlsOf } from './crawl.ts';
 import { rawSiteOverall, round, SCORING_VERSION, scorePage, scoreSite } from './score.ts';
 
@@ -219,6 +220,17 @@ export function reportMarkdown(r: Report, diff?: ReportDiff): string {
   const kb = r.pages.filter((p) => p.keyboard);
   if (kb.length) {
     out.push('## Keyboard probe (heuristic, not scored)', '');
+    out.push('The engine pressed Tab through each page, the way someone who cannot use a mouse does. Signals, not scored: each deserves a manual check.', '');
+    for (const c of keyboardChecks(kb)) {
+      out.push(`### ${c.ok ? '✓' : '⚠'} ${c.question}`, '', c.finding, '');
+      if (c.ok) continue;
+      out.push(`**Why it matters.** ${c.why}`, '', `**What to do.** ${c.todo}`, '');
+      if (c.elements?.length) {
+        for (const e of c.elements) out.push(`- ${code(e.page)} ${code(e.selector)}`);
+        out.push('');
+      } else if (c.pages.length) out.push(`Pages: ${c.pages.slice(0, 12).map(code).join(', ')}${c.pages.length > 12 ? ` and ${c.pages.length - 12} more` : ''}`, '');
+    }
+    out.push('### Per-page figures', '');
     out.push('| Page | Tab stops / tabbable | Skip link | No visible focus | Possible trap |', '|---|---:|---|---:|---|');
     for (const p of kb) {
       const k = p.keyboard!;

@@ -1,4 +1,5 @@
 import type { AssistedFinding, IssueGroup, PageResult, Report } from './types.ts';
+import { SKIP_LINK_MIN_TABBABLE } from './keyboard.ts';
 import { normalizeSelector } from './group.ts';
 import { round } from './score.ts';
 import { scopesOf, scopeText } from './crawl.ts';
@@ -153,7 +154,7 @@ function keyboardSignals(pages: PageResult[]): KeyboardSignal[] {
   for (const p of ok) if (p.keyboard!.possibleTrap) {
     out.push({ kind: 'possible-trap', what: `focus stops moving at \`${p.keyboard!.possibleTrap}\` (possible keyboard trap, WCAG 2.1.2)`, pages: [p.path] });
   }
-  const noSkip = ok.filter((p) => !p.keyboard!.hasSkipLink && p.keyboard!.tabbableElements > 20).map((p) => p.path);
+  const noSkip = ok.filter((p) => !p.keyboard!.hasSkipLink && p.keyboard!.tabbableElements > SKIP_LINK_MIN_TABBABLE).map((p) => p.path);
   if (noSkip.length) out.push({ kind: 'no-skip-link', what: 'no skip link before a long run of tab stops (WCAG 2.4.1)', pages: noSkip });
   return out;
 }

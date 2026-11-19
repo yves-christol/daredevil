@@ -7,6 +7,7 @@ export { markdownToHtml } from './htmlkit.ts';
 import type { FixCategory } from './fixprompt.ts';
 import { explanationFor } from './explain.ts';
 import { scopesLabel } from './crawl.ts';
+import { keyboardChecks, lowReach } from './keyboard.ts';
 
 export interface HtmlExtras {
   diff?: ReportDiff;
@@ -99,6 +100,60 @@ function issueCard(g: IssueGroup, rank: number, maxGain: number): string {
 </details>
 ${help}
 </li>`;
+}
+
+function keyboardSection(kb: PageResult[]): string {
+  const checks = keyboardChecks(kb);
+  const problems = checks.filter((c) => !c.ok).length;
+  const verdict = problems
+    ? `<p class="kb-verdict"><span class="warn-text">${problems} of ${checks.length} checks need a manual look.</span> Each is explained below, with what to do.</p>`
+    : `<p class="kb-verdict"><span class="ok-icon" aria-hidden="true">✓</span> No keyboard problem detected by the probe. A quick manual pass is still worth it: press Tab through the main pages and check that you always see where you are.</p>`;
+  const elements = (c: (typeof checks)[number]) =>
+    c.elements?.length
+      ? `<details><summary>Show the ${c.elements.length} element${c.elements.length > 1 ? 's' : ''}</summary><div class="table-wrap"><table>
+    <thead><tr><th scope="col">Page</th><th scope="col">Element</th><th scope="col">Markup</th></tr></thead>
+    <tbody>${c.elements.map((e) => `<tr><td><code>${esc(e.page)}</code></td><td><code>${esc(e.selector)}</code></td><td><code>${esc(e.html)}</code></td></tr>`).join('')}</tbody>
+  </table></div></details>`
+      : '';
+  const pages = (c: (typeof checks)[number]) =>
+    !c.ok && !c.elements?.length && c.pages.length
+      ? `<p class="small"><strong>Pages:</strong> ${c.pages.slice(0, 12).map((p) => `<code>${esc(p)}</code>`).join(', ')}${c.pages.length > 12 ? ` <span class="muted">+${c.pages.length - 12} more</span>` : ''}</p>`
+      : '';
+  return `<section id="keyboard" aria-labelledby="keyboard-h">
+  <h2 id="keyboard-h">Keyboard probe</h2>
+  <p class="lede">The engine pressed the Tab key through each page, the way someone who cannot use a mouse does, and watched where the focus went. These are heuristic signals: <strong>not part of the score</strong>, and each deserves a manual check before being called a defect.</p>
+  ${verdict}
+  <ul class="kb-checks">${checks
+    .map(
+      (c) => `<li class="card kb-check ${c.ok ? 'kb-ok' : 'kb-warn'}">
+    <h3><span class="${c.ok ? 'ok-icon' : 'warn-text'}" aria-hidden="true">${c.ok ? '✓' : '!'}</span> ${esc(c.question)} <span class="visually-hidden">${c.ok ? '(fine)' : '(to check)'}</span></h3>
+    <p>${inline(c.finding)}</p>
+    ${c.ok
+      ? `<details><summary>Why it matters</summary><p>${inline(c.why)}</p></details>`
+      : `<p><strong>Why it matters.</strong> ${inline(c.why)}</p>
+    <p><strong>What to do.</strong> ${inline(c.todo)}</p>
+    ${pages(c)}${elements(c)}`}
+  </li>`,
+    )
+    .join('')}</ul>
+  <details class="card kb-pages"><summary>Per-page figures</summary>
+  <dl class="kb-legend">
+    <dt>Reached / tabbable</dt><dd>Elements Tab actually landed on, out of the links, buttons and fields found. Highlighted when fewer than half were reached. “${MAX_TABS_LABEL}+” means the probe stopped at its limit of ${MAX_TABS_LABEL} presses, not that the rest is unreachable.</dd>
+    <dt>Skip link</dt><dd>Whether the first Tab stop is a link to an anchor on the same page (“skip to content”). Only matters on pages with many links.</dd>
+    <dt>No visible focus</dt><dd>Elements whose look did not change at all when focused.</dd>
+    <dt>Possible trap</dt><dd>The element where focus stopped moving, if any.</dd>
+  </dl>
+  <div class="table-wrap"><table>
+    <thead><tr><th scope="col">Page</th><th scope="col" class="num">Reached / tabbable</th><th scope="col">Skip link</th><th scope="col" class="num">No visible focus</th><th scope="col">Possible trap</th></tr></thead>
+    <tbody>${kb
+      .map((p) => {
+        const k = p.keyboard!;
+        const low = lowReach(k);
+        return `<tr><td><code>${esc(p.path)}</code></td><td class="num${low ? ' warn-cell' : ''}">${k.tabStops}${k.capped ? '+' : ''} / ${k.tabbableElements}</td><td>${k.hasSkipLink ? 'yes' : 'no'}</td><td class="num${k.noVisibleFocus.length ? ' warn-cell' : ''}">${k.noVisibleFocus.length || ''}</td><td>${k.possibleTrap ? `<code>${esc(k.possibleTrap)}</code>` : ''}</td></tr>`;
+      })
+      .join('')}</tbody>
+  </table></div></details>
+</section>`;
 }
 
 function assistedSection(findings: AssistedFinding[]): string {
@@ -289,20 +344,7 @@ ${r.needsReview.length ? `<section id="review" aria-labelledby="review-h">
   </table></div></details>
 </section>` : ''}
 
-${kb.length ? `<section id="keyboard" aria-labelledby="keyboard-h">
-  <h2 id="keyboard-h">Keyboard probe</h2>
-  <p class="lede">The engine pressed Tab through each page. A heuristic signal, not scored: a low share of reachable elements or a possible trap deserves a manual check. “${MAX_TABS_LABEL}+” means the probe stopped at its limit of ${MAX_TABS_LABEL} Tab presses, not that the rest is unreachable.</p>
-  <div class="table-wrap"><table>
-    <thead><tr><th scope="col">Page</th><th scope="col" class="num">Reached / tabbable</th><th scope="col">Skip link</th><th scope="col" class="num">No visible focus</th><th scope="col">Possible trap</th></tr></thead>
-    <tbody>${kb
-      .map((p) => {
-        const k = p.keyboard!;
-        const low = !k.capped && k.tabbableElements > 10 && k.tabStops < k.tabbableElements * 0.5;
-        return `<tr><td><code>${esc(p.path)}</code></td><td class="num${low ? ' warn-cell' : ''}">${k.tabStops}${k.capped ? '+' : ''} / ${k.tabbableElements}</td><td>${k.hasSkipLink ? 'yes' : '<span class="warn-text">no</span>'}</td><td class="num">${k.noVisibleFocus.length || ''}</td><td>${k.possibleTrap ? `<code>${esc(k.possibleTrap)}</code>` : ''}</td></tr>`;
-      })
-      .join('')}</tbody>
-  </table></div>
-</section>` : ''}
+${kb.length ? keyboardSection(kb) : ''}
 
 ${imagesSection(r.pages)}
 
@@ -450,6 +492,18 @@ dialog.explain::backdrop { background: rgb(0 0 0 / .65); }
 .example figcaption { font-size: 14px; margin-bottom: .5rem; display: flex; gap: .4rem; flex-wrap: wrap; }
 .failure { font-size: 14px; color: var(--muted); border-left: 2px solid var(--border); padding-left: .75rem; margin: .6rem 0 0; }
 
+.kb-verdict { font-weight: 600; margin: 0 0 1rem; max-width: 70ch; }
+.kb-checks { list-style: none; padding: 0; margin: 0 0 .8rem; display: grid; gap: .6rem; }
+.kb-check { padding: 1rem 1.25rem; }
+.kb-check.kb-warn { border: 2px solid var(--control); }
+.kb-check h3 { font-size: 16px; margin: 0 0 .4rem; display: flex; gap: .5rem; align-items: baseline; }
+.kb-check p { margin: .4rem 0; max-width: 78ch; }
+.kb-check details { margin-top: .4rem; }
+.kb-check details > summary { cursor: pointer; font-size: 14px; }
+.kb-legend { display: grid; grid-template-columns: max-content 1fr; gap: .3rem 1rem; font-size: 14px; margin: .8rem 0; }
+.kb-legend dt { font-weight: 600; }
+.kb-legend dd { margin: 0; color: var(--muted); max-width: 70ch; }
+@media (max-width: 640px) { .kb-legend { grid-template-columns: 1fr; } .kb-legend dd { margin-bottom: .4rem; } }
 .cards { list-style: none; padding: 0; margin: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: .8rem; }
 .finding p { margin: .45rem 0; }
 .finding-head { display: flex; flex-wrap: wrap; gap: .4rem; align-items: center; font-size: 14px; }

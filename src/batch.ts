@@ -25,10 +25,13 @@ import {
  * plus reports/_batches/<name>/<stamp>/batch.json listing every entry's result.
  *
  * Batch file formats:
- *   .txt   one entry per line: `<url or /path> [label]`; `#` comments; `base: <url>` and
- *          `name: <name>` directives. CLI options apply to every entry.
+ *   .txt   one entry per line: `<url or /path> [+ <url or /path> ...] [label]`; `#` comments;
+ *          `base: <url>` and `name: <name>` directives. CLI options apply to every entry.
  *   .json  { "name"?, "base"?, "defaults"?: {settings}, "entries": [ "<url or /path>" |
- *          { "url", "label"?, ...settings } ] }  (settings: AuditSettings keys, viewport as "WxH")
+ *          { "url": "<url or /path>" | ["<url or /path>", ...], "label"?, ...settings } ] }
+ *          (settings: AuditSettings keys, viewport as "WxH")
+ *
+ * An entry with several URLs is one audit of all their scopes together: one report, one score.
  *
  * Precedence: built-in defaults < file "defaults" < CLI options < entry settings.
  * `exclude` patterns add up across all levels. Paths (starting with "/") are resolved against
@@ -40,7 +43,8 @@ export const BATCH_SCHEMA_VERSION = '1.0.0';
 export type EntrySettings = Partial<AuditSettings>;
 
 export interface BatchFileEntry {
-  url: string;
+  /** One or more URLs or /paths (several: one combined audit). */
+  urls: string[];
   label?: string;
   settings: EntrySettings;
 }
@@ -52,9 +56,12 @@ export interface BatchFile {
   entries: BatchFileEntry[];
 }
 
-/** An entry ready to run: URL resolved, options merged. */
+/** An entry ready to run: URLs resolved, options merged. */
 export interface BatchEntry {
+  /** The first URL (the only one, usually). */
   url: string;
+  /** All URLs, resolved. */
+  urls: string[];
   label: string;
   options: Omit<AuditOptions, 'imageScreenshots' | 'out'>;
 }
@@ -128,8 +135,15 @@ export function parseBatchFile(text: string, fileName: string): BatchFile {
       file[directive[1].toLowerCase() as 'base' | 'name'] = directive[2].trim();
       continue;
     }
-    const [url, ...label] = line.split(/\s+/);
-    file.entries.push({ url, label: label.join(' ') || undefined, settings: {} });
+    // "<url> + <url> + ... label": URLs joined by a standalone "+" form one combined audit.
+    const words = line.split(/\s+/);
+    const urls = [words.shift()!];
+    while (words[0] === '+') {
+      words.shift();
+      if (!words.length) throw new Error(`${fileName}: "+" at the end of the line: ${line}`);
+      urls.push(words.shift()!);
+    }
+    file.entries.push({ urls, label: words.join(' ') || undefined, settings: {} });
   }
   return file;
 }
@@ -149,10 +163,14 @@ function parseJsonBatch(text: string, fileName: string): BatchFile {
   if (!Array.isArray(data.entries)) throw new Error(`${fileName}: "entries" must be an array`);
   const entries = data.entries.map((e, i): BatchFileEntry => {
     const where = `${fileName}: entries[${i}]`;
-    if (typeof e === 'string') return { url: e, settings: {} };
-    if (!isObject(e) || typeof e.url !== 'string' || !e.url) throw new Error(`${where}: expected a URL string or an object with "url"`);
+    if (typeof e === 'string') return { urls: [e], settings: {} };
+    if (!isObject(e)) throw new Error(`${where}: expected a URL string or an object with "url"`);
+    const urls = typeof e.url === 'string' ? [e.url] : e.url;
+    if (!Array.isArray(urls) || urls.length === 0 || !urls.every((u) => typeof u === 'string' && u)) {
+      throw new Error(`${where}: "url" must be a URL string or a non-empty array of URL strings`);
+    }
     if (e.label !== undefined && typeof e.label !== 'string') throw new Error(`${where}: "label" must be a string`);
-    return { url: e.url, label: e.label as string | undefined, settings: parseSettings(e, where, ['url', 'label']) };
+    return { urls: urls as string[], label: e.label as string | undefined, settings: parseSettings(e, where, ['url', 'label']) };
   });
   return {
     name: data.name as string | undefined,
@@ -162,10 +180,13 @@ function parseJsonBatch(text: string, fileName: string): BatchFile {
   };
 }
 
-/** Same rule as the report folder name, so two entries never write into the same history. */
-export function scopeKey(url: string, auth: boolean): string {
-  const s = scopeFromUrl(url);
-  return s.origin + (s.pathPrefix || '/') + (auth ? ' (logged in)' : '');
+/** Same rule as the report folder name (several URLs: the set, in any order), so two entries never write into the same history. */
+export function scopeKey(urls: string | string[], auth: boolean): string {
+  const keys = (typeof urls === 'string' ? [urls] : urls).map((u) => {
+    const s = scopeFromUrl(u);
+    return s.origin + (s.pathPrefix || '/');
+  });
+  return keys.sort().join(' + ') + (auth ? ' (logged in)' : '');
 }
 
 export function resolveEntries(file: BatchFile, cli: EntrySettings, cliBase?: string): BatchEntry[] {
@@ -181,31 +202,35 @@ export function resolveEntries(file: BatchFile, cli: EntrySettings, cliBase?: st
   }
   const seen = new Map<string, string>();
   return file.entries.map((e, i) => {
-    let url: string;
-    if (e.url.startsWith('/')) {
-      if (!baseUrl) throw new Error(`entry ${i + 1} (${e.url}) is a path: give a base URL (--base, or "base" in the file)`);
-      url = new URL(e.url, baseUrl.origin).toString();
-    } else {
-      url = withScheme(e.url);
-    }
-    try {
-      new URL(url);
-    } catch {
-      throw new Error(`entry ${i + 1}: not a valid URL: ${e.url}`);
-    }
+    const urls = e.urls.map((raw) => {
+      let url: string;
+      if (raw.startsWith('/')) {
+        if (!baseUrl) throw new Error(`entry ${i + 1} (${raw}) is a path: give a base URL (--base, or "base" in the file)`);
+        url = new URL(raw, baseUrl.origin).toString();
+      } else {
+        url = withScheme(raw);
+      }
+      try {
+        new URL(url);
+      } catch {
+        throw new Error(`entry ${i + 1}: not a valid URL: ${raw}`);
+      }
+      return url;
+    });
     const options = {
       ...DEFAULT_AUDIT_SETTINGS,
       ...file.defaults,
       ...cli,
       ...e.settings,
       exclude: [...(file.defaults.exclude ?? []), ...(cli.exclude ?? []), ...(e.settings.exclude ?? [])],
-      startUrl: url,
+      startUrls: urls,
     };
-    const key = scopeKey(url, !!options.auth);
+    const key = scopeKey(urls, !!options.auth);
     const dup = seen.get(key);
     if (dup) throw new Error(`entries ${dup} and ${i + 1} audit the same scope (${key}): keep one`);
     seen.set(key, String(i + 1));
-    return { url, label: e.label ?? url.replace(/^https?:\/\//, '').replace(/\/$/, ''), options };
+    const label = e.label ?? urls.map((u) => u.replace(/^https?:\/\//, '').replace(/\/$/, '')).join(' + ');
+    return { url: urls[0], urls, label, options };
   });
 }
 
@@ -236,7 +261,10 @@ export async function preflight(entries: BatchEntry[]): Promise<string[]> {
 export type EntryStatus = 'ok' | 'no-pages' | 'auth-lost' | 'error' | 'pending';
 
 export interface BatchEntryResult {
+  /** The first start URL. */
   url: string;
+  /** All start URLs, only when there are several (one combined audit). */
+  urls?: string[];
   label: string;
   loggedIn: boolean;
   status: EntryStatus;
@@ -347,7 +375,7 @@ export async function findPreviousBatch(batchesDir: string, stamp: string): Prom
   return undefined;
 }
 
-const entryKey = (e: { url: string; loggedIn: boolean }) => scopeKey(e.url, e.loggedIn);
+const entryKey = (e: { url: string; urls?: string[]; loggedIn: boolean }) => scopeKey(e.urls ?? e.url, e.loggedIn);
 
 /** Compare a scored entry with the same scope in the previous batch, using its report.json when still there. */
 export async function compareWithPrevious(cur: BatchEntryResult, report: Report, prev: { dir: string; batch: BatchReport }): Promise<BatchEntryResult['sincePrevious']> {
@@ -365,7 +393,7 @@ export async function compareWithPrevious(cur: BatchEntryResult, report: Report,
   return { before: p.score.overall, delta: Math.round((cur.score.overall - p.score.overall) * 10) / 10, comparable: false };
 }
 
-export function previousInfo(prev: { dir: string; batch: BatchReport }, batchDir: string, entries: { url: string; label: string; loggedIn: boolean }[]): NonNullable<BatchReport['previous']> {
+export function previousInfo(prev: { dir: string; batch: BatchReport }, batchDir: string, entries: { url: string; urls?: string[]; label: string; loggedIn: boolean }[]): NonNullable<BatchReport['previous']> {
   const now = new Set(entries.map(entryKey));
   const before = new Set(prev.batch.entries.map(entryKey));
   return {
@@ -384,6 +412,7 @@ export function entryResult(e: BatchEntry, r: { reportDir: string; report: Repor
   const status: EntryStatus = s.pagesScanned === 0 ? 'no-pages' : lost > s.pagesScanned ? 'auth-lost' : 'ok';
   return {
     url: e.url,
+    ...(e.urls.length > 1 ? { urls: e.urls } : {}),
     label: e.label,
     loggedIn: !!e.options.auth,
     status,
@@ -437,25 +466,27 @@ export interface RunBatchOptions {
 }
 
 /**
- * Run `fn` over items, at most `parallel` at once, never two items with the same key at once
- * (key = origin: parallel requests to one host are what trips bot protection). Items start in
- * order, skipping over those whose key is busy. `fn` must not throw.
+ * Run `fn` over items, at most `parallel` at once, never two items sharing a key at once
+ * (keys = origins: parallel requests to one host are what trips bot protection; an audit of
+ * several hosts holds all of them). Items start in order, skipping over those with a busy key.
+ * `fn` must not throw.
  */
-export async function runPool<T>(items: T[], parallel: number, keyOf: (t: T) => string, fn: (t: T, index: number) => Promise<void>): Promise<void> {
+export async function runPool<T>(items: T[], parallel: number, keyOf: (t: T) => string | string[], fn: (t: T, index: number) => Promise<void>): Promise<void> {
   const pending = items.map((_, i) => i);
   const active = new Set<Promise<void>>();
   const busy = new Set<string>();
   const limit = Math.max(1, Math.floor(parallel) || 1);
   while (pending.length || active.size) {
     while (active.size < limit) {
-      const k = pending.findIndex((i) => !busy.has(keyOf(items[i])));
+      const keys = (t: T) => [keyOf(t)].flat();
+      const k = pending.findIndex((i) => !keys(items[i]).some((x) => busy.has(x)));
       if (k < 0) break;
       const i = pending.splice(k, 1)[0];
-      const key = keyOf(items[i]);
-      busy.add(key);
+      const held = keys(items[i]);
+      for (const x of held) busy.add(x);
       const p: Promise<void> = fn(items[i], i).finally(() => {
         active.delete(p);
-        busy.delete(key);
+        for (const x of held) busy.delete(x);
       });
       active.add(p);
     }
@@ -499,7 +530,7 @@ export async function applySamePagesFrom(entries: BatchEntry[], from: string, ct
   const warnings: string[] = [];
   for (const e of entries) {
     if (e.options.samePages) continue;
-    const p = byKey.get(scopeKey(e.url, !!e.options.auth));
+    const p = byKey.get(scopeKey(e.urls, !!e.options.auth));
     if (!p) warnings.push(`${e.label}: not in that batch, crawled normally`);
     else if (p.status !== 'ok' || !p.reportDir) warnings.push(`${e.label}: not scored in that batch (${p.status}), crawled normally`);
     else e.options.samePages = join(dir, p.reportDir, 'report.json');
@@ -525,7 +556,7 @@ export async function runBatch(o: RunBatchOptions): Promise<{ batchDir: string; 
     complete: false,
     imageScreenshots: o.imageScreenshots,
     summary: batchSummary([]),
-    entries: o.entries.map((e) => ({ url: e.url, label: e.label, loggedIn: !!e.options.auth, status: 'pending' })),
+    entries: o.entries.map((e) => ({ url: e.url, ...(e.urls.length > 1 ? { urls: e.urls } : {}), label: e.label, loggedIn: !!e.options.auth, status: 'pending' })),
   };
   const prevKeys = new Set(prev?.batch.entries.map(entryKey));
   if (prev) {
@@ -546,7 +577,7 @@ export async function runBatch(o: RunBatchOptions): Promise<{ batchDir: string; 
 
   const n = o.entries.length;
   const parallel = o.parallel ?? 1;
-  await runPool(o.entries, parallel, (e) => originOf(e.url), async (e, i) => {
+  await runPool(o.entries, parallel, (e) => e.urls.map(originOf), async (e, i) => {
     const tag = `[${i + 1}/${n}]`;
     // With several audits at once, prefix every line so the log stays readable.
     const log = parallel > 1 ? (m: string) => o.log(m.split('\n').map((l) => (l ? `${tag} ${l}` : l)).join('\n')) : o.log;

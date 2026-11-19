@@ -1,0 +1,30 @@
+{
+  "name": "orange",
+  "entries": [
+    { "url": "https://www.orange.fr/", "label": "Portail" },
+    { "url": "https://boutique.orange.fr/", "label": "Boutique" },
+    { "url": "https://espace-client.orange.fr/", "label": "Espace client", "auth": ".auth/espace-client.orange.fr.json" },
+    { "url": "https://login.orange.fr/", "label": "Identification" },
+    { "url": "https://assistance.orange.fr/", "label": "Assistance" },
+    { "url": "https://service.orange.fr/", "label": "Engagements / services" },
+    { "url": "https://reseaux.orange.fr/", "label": "Réseaux" },
+    { "url": "https://agence.orange.fr/", "label": "Boutiques physiques" },
+    { "url": "https://ateliersnumeriques.orange.fr/", "label": "Ateliers numériques" },
+    { "url": "https://messagerie.orange.fr/", "label": "Mail (page publique)" },
+    { "url": "https://tv.orange.fr/", "label": "Orange TV" },
+    {
+      "url": [
+        "https://news.orange.fr/",
+        "https://actu.orange.fr/",
+        "https://sports.orange.fr/",
+        "https://divertissements.orange.fr/",
+        "https://tech.orange.fr/",
+        "https://auto.orange.fr/",
+        "https://video-streaming.orange.fr/"
+      ],
+      "label": "Actualités et contenus",
+      "maxPages": 56
+    },
+    { "url": "https://meteo.orange.fr/", "label": "Météo" }
+  ]
+}

@@ -8,6 +8,13 @@ export interface AuditConfig {
   startUrl: string;
   /** Origin + path prefix that bounds the crawl, e.g. https://www.mysite.com/shop */
   scope: { origin: string; pathPrefix: string };
+  /**
+   * Only for an audit with several start URLs (one combined report, possibly across hosts):
+   * all of them and their scopes, in the given order; `startUrl` / `scope` are the first.
+   * The crawl stays inside any of the scopes and shares maxPages evenly between them.
+   */
+  startUrls?: string[];
+  scopes?: { origin: string; pathPrefix: string }[];
   maxPages: number;
   concurrency: number;
   viewport: { width: number; height: number };

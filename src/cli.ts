@@ -24,7 +24,10 @@ import { applySamePagesFrom, batchName, parseBatchFile, preflight, renderBatch, 
 const USAGE = `daredevil — accessibility audit (axe-core + Playwright)
 
 Usage:
-  daredevil audit <url> [options]     Crawl pages under <url>'s path and audit them
+  daredevil audit <url> [<url>...] [options]
+                                      Crawl pages under <url>'s path and audit them. Several URLs
+                                      (any hosts): one combined audit, report and score for all
+                                      their paths; --max-pages is shared evenly between them
   daredevil batch <file> [options]    Audit every URL or path listed in <file> (.txt or .json), then
                                       write reports/_batches/<name>/<stamp>/ (batch.json, index.html,
                                       index.md: every score, linking to each detailed report)
@@ -35,7 +38,7 @@ Usage:
                                       agent's summary.md, assisted.json and handoff.md if present
 
 Audit options:
-  --max-pages <n>        Max pages to scan (default 25)
+  --max-pages <n>        Max pages to scan (default 25; in total, with several URLs)
   --concurrency <n>      Parallel pages (default 2)
   --viewport <WxH>       Viewport (default 1280x800)
   --wait-ms <ms>         Extra settle time after load (default 1000)
@@ -61,10 +64,12 @@ Audit options:
 
 Batch:
   <file>.txt             One entry per line: <url or /path> [label]. '#' comments, 'base: <url>' to
-                         resolve paths, 'name: <name>' for the batch folder (default: the file name)
+                         resolve paths, 'name: <name>' for the batch folder (default: the file name).
+                         '<url> + <url> + ... [label]': one combined audit of several URLs
   <file>.json            { "name", "base", "defaults": {settings}, "entries": ["/path" |
-                         { "url", "label", ...settings }] }. Settings use the option names in
-                         camelCase (maxPages, exclude, auth, samePages, viewport: "1280x800", ...)
+                         { "url", "label", ...settings }] }. "url" may be an array (one combined
+                         audit). Settings use the option names in camelCase (maxPages, exclude,
+                         auth, samePages, viewport: "1280x800", ...)
   -                      As <file>: read the list from stdin (JSON if it starts with '{')
   --base <url>           Resolve /paths against this origin (overrides the file's base)
   --name <name>          Batch name (overrides the file's; default: the file name, or 'batch')
@@ -191,7 +196,7 @@ async function audit(argv: string[]) {
   if (argv.includes('--help') || argv.includes('-h')) return void process.stdout.write(USAGE);
   const { values, positionals } = parseArgs({ args: argv, allowPositionals: true, options: AUDIT_ARGS });
   if (!positionals[0]) throw new Error('missing <url>\n\n' + USAGE);
-  const options = { ...DEFAULT_AUDIT_SETTINGS, ...settingsFromArgs(values), startUrl: withScheme(positionals[0]) };
+  const options = { ...DEFAULT_AUDIT_SETTINGS, ...settingsFromArgs(values), startUrls: positionals.map(withScheme) };
   const { session } = await checkAuditOptions(options);
   if (session) console.error(`session: ${session}`);
   const imageScreenshots = options.skipImages ? false : await screenshotChoice(!!options.auth, values.images, values['no-images']);

@@ -88,7 +88,7 @@ function row(b: BatchReport, { e, order }: { e: BatchEntryResult; order: number 
         : '<td class="num"><span class="muted">–</span></td>';
   const top = e.topIssue;
   return `<tr data-order="${order}" data-label="${esc(e.label.toLowerCase())}" data-score="${ok ? s!.overall : ''}" data-delta="${num(c.delta)}" data-pages="${num(e.pagesScanned)}" data-groups="${ok ? num(e.issueGroups) : ''}" data-critical="${ok ? num(e.byImpact?.critical) : ''}">
-  <th scope="row">${href ? `<a href="${esc(href)}">${esc(e.label)}</a>` : esc(e.label)}<br><span class="muted small entry-url">${esc(e.url.replace(/^https?:\/\//, '')).replace(/\//g, '/<wbr>')}${e.loggedIn ? ' · logged in' : ''}</span></th>
+  <th scope="row">${href ? `<a href="${esc(href)}">${esc(e.label)}</a>` : esc(e.label)}<br><span class="muted small entry-url">${(e.urls ?? [e.url]).map((u) => esc(u.replace(/^https?:\/\//, '')).replace(/\//g, '/<wbr>')).join(' + ')}${e.loggedIn ? ' · logged in' : ''}</span></th>
   <td class="num">${ok ? `<span class="pill band-${bd}">${s!.overall}</span><br><span class="small band-text-${bd}"><span aria-hidden="true">${BAND_ICON[bd!]}</span> ${BAND_LABEL[bd!]}</span>` : '<span class="muted">–</span>'}</td>
   ${delta}
   <td class="num nowrap">${ok ? `${s!.byLevel.A}<span class="muted"> / </span>${s!.byLevel.AA}` : ''}</td>

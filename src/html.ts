@@ -6,6 +6,7 @@ import { BAND_ICON, BAND_LABEL, CONF_ICON, band, esc, fmt, impactBadge, inline, 
 export { markdownToHtml } from './htmlkit.ts';
 import type { FixCategory } from './fixprompt.ts';
 import { explanationFor } from './explain.ts';
+import { scopesLabel } from './crawl.ts';
 
 export interface HtmlExtras {
   diff?: ReportDiff;
@@ -183,7 +184,7 @@ function imagesSection(pages: PageResult[]): string {
 
 export function renderHtml(r: Report, extras: HtmlExtras = {}): string {
   const s = r.summary;
-  const scopeLabel = r.config.scope.origin.replace(/^https?:\/\//, '') + r.config.scope.pathPrefix;
+  const scopeLabel = scopesLabel(r.config);
   const maxGain = Math.max(0, ...r.issues.map((g) => g.estimatedScoreGain));
   const kb = r.pages.filter((p) => p.keyboard);
   const consentPages = r.pages.filter((p) => p.consent?.dismissed).length;

@@ -42,6 +42,7 @@ npm run -s audit -- <url> [--max-pages N] [--same-pages <previous report.json>]
 - Cookie-consent dialogs are dismissed automatically with "reject" / "continue without accepting" (never "accept"). Check `pages[].consent` in the report. If a dialog was visibly not dismissed (keyboard probe shows the same handful of tab stops on every page, screenshots show the dialog), re-run with `--consent-selector "<css of the reject button>"`. Use `--keep-consent` only when asked to audit the dialog itself.
 - **Re-audit after fixes / "did it improve?"**: find the latest `reports/<site-slug>/*/report.json` and pass it with `--same-pages`, so exactly the same pages are compared.
 - **Several URLs or paths, or benchmarking several sites**: use a batch (section 5), not separate runs: same options for all, one global page.
+- **Several URLs in one report** (the task wants them audited together, e.g. "one report for all the news sections"): pass them all to one audit, `npm run -s audit -- <url> <url> ...`. The crawl covers every scope, `--max-pages` is the total shared evenly between them (raise it accordingly), and page paths include the host when there are several hosts. In a batch, the same is one entry: `<url> + <url> [label]`.
 - Other options: `npm run -s audit -- --help`.
 
 ### Logged-in audits (pages behind a login)
@@ -153,7 +154,7 @@ When the task names several URLs or paths (or a batch file), run one batch inste
 
 ### Run it
 
-You cannot write files, so pipe the list in (`-` reads stdin): one `<url or /path> [label]` per line.
+You cannot write files, so pipe the list in (`-` reads stdin): one `<url or /path> [label]` per line. An entry audited as one combined report: `<url> + <url> + ... [label]`.
 
 ```bash
 printf '/shop Shop\n/cart Cart\n/account Account\n' | npm run -s batch -- - --base https://www.mysite.com --name "mysite" [--max-pages N] [--parallel N]
@@ -172,7 +173,7 @@ The command prints `batchDir`, `index`, the summary and one line per entry (`sta
 
 Read `<batchDir>/batch.json`:
 - `summary`: entries, scored (`ok`), without a score (`notOk`), `min` / `median` / `max`. There is no combined score: never invent one (no average of the entries' scores either).
-- `entries[]`: `status` (`ok`, `no-pages`, `auth-lost`, `error`, `pending`), `score`, `topIssue`, `byImpact`, `reportDir` (relative to the batch folder), `sincePrevious` (vs. the previous batch: `delta`, `comparable`, groups `fixed` / `introduced`), `newSincePrevious`.
+- `entries[]`: `url` (and `urls` for a combined entry), `status` (`ok`, `no-pages`, `auth-lost`, `error`, `pending`), `score`, `topIssue`, `byImpact`, `reportDir` (relative to the batch folder), `sincePrevious` (vs. the previous batch: `delta`, `comparable`, groups `fixed` / `introduced`), `newSincePrevious`.
 - `shared[]`: root causes (same group id: same rule and signature) in 2+ audits, with each audit's own estimated gain. These are usually one fix in a shared template, CSS or component: lead with them.
 - `previous`: the previous batch of the same name (date, summary, audits `added` / `removed`).
 

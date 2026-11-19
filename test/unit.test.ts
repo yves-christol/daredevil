@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { inScope, normalizeUrl, scopeFromUrl } from '../src/crawl.ts';
+import { inScope, normalizeUrl, outermost, pathOf, scopeConflicts, scopeFromUrl, scopeIndex, scopesLabel } from '../src/crawl.ts';
 import { levelOf, principleOf, successCriteria } from '../src/wcag.ts';
 import { nodeSignature, normalizeSelector } from '../src/group.ts';
 import { scorePage } from '../src/score.ts';
@@ -17,6 +17,35 @@ test('scope: /shop includes subpaths but not /shopping', () => {
   assert.ok(!inScope('https://www.mysite.com/shop/catalog.pdf', s));
   assert.deepEqual(scopeFromUrl('https://a.com/demo/before/home.html'), { origin: 'https://a.com', pathPrefix: '/demo/before' });
   assert.deepEqual(scopeFromUrl('https://a.com/'), { origin: 'https://a.com', pathPrefix: '' });
+});
+
+test('several start URLs: scope lookup, conflicts, labels, report folder', async () => {
+  const urls = ['https://actu.x.fr/', 'https://sports.x.fr/foot', 'https://www.x.fr/shop'];
+  const scopes = urls.map(scopeFromUrl);
+  assert.equal(scopeIndex('https://sports.x.fr/foot/ligue-1', scopes), 1);
+  assert.equal(scopeIndex('https://sports.x.fr/rugby', scopes), -1);
+  assert.equal(scopeIndex('https://actu.x.fr/monde/a', scopes), 0);
+  assert.equal(pathOf('https://actu.x.fr/monde?p=2', true), 'actu.x.fr/monde?p=2');
+  assert.equal(pathOf('https://actu.x.fr/monde?p=2'), '/monde?p=2');
+  assert.equal(scopesLabel({ scope: scopes[0], scopes }), 'actu.x.fr + sports.x.fr/foot + www.x.fr/shop');
+
+  assert.deepEqual(scopeConflicts(urls), []);
+  assert.deepEqual(scopeConflicts(['https://a.com/shop', 'https://b.com/shop', 'https://a.com/shopping']), []);
+  assert.match(scopeConflicts(['https://a.com/shop/', 'https://a.com/shop']).join(), /same scope/);
+  assert.match(scopeConflicts(['https://a.com/shop/cart', 'https://a.com/shop']).join(), /shop\/cart is inside https:\/\/a.com\/shop/);
+  assert.match(scopeConflicts(['https://a.com/', 'https://a.com/help']).join(), /help is inside/);
+  assert.deepEqual(outermost(['https://a.com/shop/cart', 'https://b.com/', 'https://a.com/shop', 'https://a.com/shop/']), ['https://b.com/', 'https://a.com/shop']);
+
+  const { siteSlug, checkAuditOptions } = await import('../src/run.ts');
+  const cfg = (u: string[]) => ({ startUrl: u[0], scope: scopeFromUrl(u[0]), ...(u.length > 1 ? { startUrls: u, scopes: u.map(scopeFromUrl) } : {}) }) as never;
+  assert.equal(siteSlug(cfg(['https://www.x.fr/shop'])), 'www.x.fr_shop', 'one URL: unchanged folder name');
+  assert.equal(siteSlug(cfg(['https://sports.x.fr/', 'https://actu.x.fr/'])), 'actu.x.fr+sports.x.fr');
+  assert.equal(siteSlug(cfg(['https://actu.x.fr/', 'https://sports.x.fr/'])), 'actu.x.fr+sports.x.fr', 'order does not matter');
+  const long = siteSlug(cfg(Array.from({ length: 12 }, (_, i) => `https://section-${i}.example.org/`)));
+  assert.ok(long.length <= 109 && /_[0-9a-f]{8}$/.test(long), long);
+  await assert.rejects(checkAuditOptions({ startUrls: ['https://a.com/shop', 'https://a.com/shop/cart'], exclude: [] }), /is inside/);
+  await assert.rejects(checkAuditOptions({ startUrls: [], exclude: [] }), /missing start URL/);
+  await checkAuditOptions({ startUrls: urls, exclude: [] });
 });
 
 test('normalizeUrl strips hash, trailing slash and query', () => {
@@ -204,6 +233,33 @@ test('batch: txt and json parsing, resolution, precedence, duplicates', async ()
   assert.deepEqual(batchSummary([r('error')]), { entries: 1, ok: 0, notOk: 1 });
 });
 
+test('batch: entries with several URLs', async () => {
+  const { parseBatchFile, resolveEntries, scopeKey } = await import('../src/batch.ts');
+  const txt = parseBatchFile('base: https://www.x.fr\nhttps://actu.x.fr + sports.x.fr + /news   All news\nhttps://tv.x.fr + https://radio.x.fr\n', 'n.txt');
+  assert.deepEqual(txt.entries.map((e) => [e.urls, e.label]), [
+    [['https://actu.x.fr', 'sports.x.fr', '/news'], 'All news'],
+    [['https://tv.x.fr', 'https://radio.x.fr'], undefined],
+  ]);
+  const [a, b] = resolveEntries(txt, {});
+  assert.deepEqual(a.urls, ['https://actu.x.fr', 'https://sports.x.fr', 'https://www.x.fr/news']);
+  assert.deepEqual(a.options.startUrls, a.urls);
+  assert.equal(a.url, 'https://actu.x.fr');
+  assert.equal(b.label, 'tv.x.fr + radio.x.fr');
+  assert.throws(() => parseBatchFile('https://a.com +\n', 'p.txt'), /"\+" at the end/);
+
+  const json = parseBatchFile('{"entries":[{"url":["https://a.com/x","https://b.com/"],"label":"AB","maxPages":40},"https://a.com/y"]}', 'n.json');
+  assert.deepEqual(json.entries[0].urls, ['https://a.com/x', 'https://b.com/']);
+  assert.equal(resolveEntries(json, {})[0].options.maxPages, 40);
+  assert.throws(() => parseBatchFile('{"entries":[{"url":[]}]}', 'q.json'), /non-empty array/);
+  assert.throws(() => parseBatchFile('{"entries":[{"url":["https://a.com",3]}]}', 'q.json'), /non-empty array/);
+
+  assert.equal(scopeKey(['https://b.com/', 'https://a.com/x/'], false), scopeKey(['https://a.com/x', 'https://b.com'], false));
+  assert.notEqual(scopeKey(['https://a.com/x', 'https://b.com'], false), scopeKey('https://a.com/x', false));
+  assert.throws(() => resolveEntries(parseBatchFile('a.com + b.com\nb.com + a.com/\n', 'r.txt'), {}), /audit the same scope/);
+  // A combined entry and a single entry for one of its URLs are distinct audits.
+  assert.equal(resolveEntries(parseBatchFile('a.com + b.com\na.com\n', 's.txt'), {}).length, 2);
+});
+
 test('batch page: escaping, safe relative links, worst first, no combined score', async () => {
   const { renderBatchHtml, batchMarkdown, reportHref } = await import('../src/batchhtml.ts');
   const { batchSummary } = await import('../src/batch.ts');
@@ -313,6 +369,22 @@ test('batch: parallel pool never runs two audits of one origin at once', async (
   const order: number[] = [];
   await runPool([1, 2, 3], 1, String, async (x) => void order.push(x));
   assert.deepEqual(order, [1, 2, 3], 'parallel 1 keeps file order');
+});
+
+test('batch: parallel pool holds every origin of a combined audit', async () => {
+  const { runPool } = await import('../src/batch.ts');
+  const running = new Set<string>();
+  const overlaps: string[] = [];
+  const items: string[][] = [['a', 'b'], ['b'], ['c'], ['a']];
+  await runPool(items, 4, (x) => x, async (x) => {
+    for (const k of x) {
+      if (running.has(k)) overlaps.push(k);
+      running.add(k);
+    }
+    await new Promise((r) => setTimeout(r, 15));
+    for (const k of x) running.delete(k);
+  });
+  assert.deepEqual(overlaps, []);
 });
 
 test('batch: --same-pages-from maps each entry to its scope in another batch', async () => {

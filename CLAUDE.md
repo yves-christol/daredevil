@@ -5,7 +5,7 @@ path, scores it and writes reports. The `daredevil` subagent (`.claude/agents/da
 runs the CLI and adds AI-assisted review, a human summary and a fix handoff.
 
 ## Commands
-- `npm run -s audit -- <url> [--max-pages N] [--same-pages prev/report.json] [--auth .auth/<host>.json]`: writes `reports/<site-slug>/<timestamp>/` (`<site-slug>_auth` when logged in)
+- `npm run -s audit -- <url> [<url>...] [--max-pages N] [--same-pages prev/report.json] [--auth .auth/<host>.json]`: writes `reports/<site-slug>/<timestamp>/` (`<site-slug>_auth` when logged in). Several URLs (any hosts) = one combined audit: scopes `+`-joined in the slug, `--max-pages` shared evenly; in batch files, `url + url [label]` (.txt) or `"url": [..]` (.json)
 - `npm run -s batch -- <list.txt|list.json> [--base URL] [--parallel N] [--same-pages-from <batch.json|dir|latest>] [audit options]`: one audit per entry, each in its usual `reports/<site-slug>/<timestamp>/`, plus `reports/_batches/<name>/<timestamp>/` with `batch.json`, `index.html` (every score, linking to each `report.html`) and `index.md` (file formats: `src/batch.ts` header)
 - `npm run -s render-batch -- <batchDir>`: rebuilds `index.html` / `index.md` from `batch.json`, including the agent's `summary.md` if present and an "AI review" link for entries whose folder has one
 - `... | npm run -s batch -- - --name <name> [--base URL]`: the list from stdin (how the agent runs batches: it cannot write files)
@@ -18,7 +18,7 @@ runs the CLI and adds AI-assisted review, a human summary and a fix handoff.
 - `src/cli.ts`: argument parsing, the screenshot question, command dispatch
 - `src/run.ts`: one audit end to end (option checks, config, crawl, report files); shared by `audit` and `batch`
 - `src/batch.ts`: batch file parsing, option precedence, pre-flight checks, run pool (`--parallel`, one audit per origin at a time), `--same-pages-from`, `batch.json`, shared root causes (same group id in 2+ audits), comparison with the previous complete batch of the same name
-- `src/crawl.ts`: URL normalisation and scope (`/shop` matches `/shop/**`, not `/shopping`)
+- `src/crawl.ts`: URL normalisation and scope (`/shop` matches `/shop/**`, not `/shopping`); several scopes per audit (`startUrls` / `scopes` in the config, only when 2+), conflicts (same / nested scopes)
 - `src/audit.ts`: browser and BFS crawl, axe scan per page, conversion of axe results
 - `src/probes.ts`: keyboard probe and image inventory (assisted, not scored)
 - `src/group.ts`: root-cause signatures and grouping (group `id` is stable across runs)

@@ -77,6 +77,17 @@ The URL's path bounds the crawl. daredevil starts at the URL and follows links b
 
 Fragments (`#…`) and query strings are ignored for de-duplication; use `--keep-query` to keep query strings. Non-HTML resources (PDF, images…) are skipped. Redirects of the start URL (e.g. `mysite.com` to `www.mysite.com`) are followed before the scope is fixed. A page that redirects inside the scope, on the server or client-side (e.g. `/` routed to `/accueil`), is reported under its final URL; when that page was already scanned, the redirecting URL is listed as a skipped duplicate and does not count against `--max-pages`.
 
+**Several start URLs, one report.** Give several URLs to make one audit of all their scopes, even on different hosts, with one report and one score (e.g. all the news sections of a portal):
+
+```bash
+npm run -s audit -- https://actu.mysite.com https://sports.mysite.com https://www.mysite.com/news --max-pages 40
+```
+
+- The crawl stays inside any of the scopes. `--max-pages` is the total, shared evenly: the next page always comes from the scope with the fewest pages so far, so one large section does not take the whole budget.
+- When the scopes span several hosts, page paths include the host (`sports.mysite.com/foot`).
+- The report folder is named after the set of scopes, sorted (`reports/actu.mysite.com+sports.mysite.com+www.mysite.com_news/`), so the same set in any order keeps one history. A different set is a different history.
+- The same scope twice, or a scope inside another (`/shop` and `/shop/cart`), is refused before anything runs.
+
 ### Pages behind a login
 
 To audit a customer area or a back office, save a login session once, then audit with it:
@@ -107,7 +118,10 @@ base: https://www.mysite.com
 /cart          Cart
 /help          Help
 https://blog.mysite.com   Blog
+https://news.mysite.com + https://sports.mysite.com + /press   News (one combined audit)
 ```
+
+URLs joined by a standalone `+` make one combined audit (see [several start URLs](#scope)): one report, one row on the batch page.
 
 `base:` resolves the `/paths` (or pass `--base`), and `name:` names the batch (default: the file name). A `.json` file can also set options for all entries or for one:
 
@@ -119,6 +133,7 @@ https://blog.mysite.com   Blog
   "entries": [
     "/shop",
     { "url": "/help", "label": "Help centre", "maxPages": 30, "exclude": ["/help/archive"] },
+    { "url": ["https://news.mysite.com", "https://sports.mysite.com"], "label": "News", "maxPages": 40 },
     { "url": "/account", "auth": ".auth/www.mysite.com.json" }
   ]
 }
@@ -454,8 +469,8 @@ The precise selector patterns of each group are kept in `patterns`, so the fixer
 ## CLI reference
 
 ```text
-npm run -s audit -- <url> [options]
-  --max-pages <n>        Max pages to scan (default 25)
+npm run -s audit -- <url> [<url>...] [options]   several URLs: one combined audit and report
+  --max-pages <n>        Max pages to scan (default 25; in total, shared between several URLs)
   --concurrency <n>      Parallel pages (default 2)
   --viewport <WxH>       Viewport (default 1280x800)
   --wait-ms <ms>         Extra settle time after load (default 1000)

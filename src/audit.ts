@@ -4,7 +4,7 @@ import { chromium, type Browser } from 'playwright';
 import { AxeBuilder } from '@axe-core/playwright';
 import type { AxeResults, Result as AxeResult } from 'axe-core';
 import type { AuditConfig, Impact, PageResult, RuleResult } from './types.ts';
-import { inScope, normalizeUrl, pathOf } from './crawl.ts';
+import { multiOrigin, normalizeUrl, pathOf, scopeIndex, scopesOf, startUrlsOf } from './crawl.ts';
 import { groupId, nodeSignature } from './group.ts';
 import { levelOf, principleOf, successCriteria } from './wcag.ts';
 import { imageInventory, keyboardProbe } from './probes.ts';
@@ -41,7 +41,20 @@ export async function runAudit(config: AuditConfig, reportDir: string, log: Log)
   const exclude = (config.exclude ?? []).map((e) => new RegExp(e, 'i'));
   const browser = await chromium.launch();
   if (!config.userAgent) config.userAgent = await defaultUserAgent(browser);
-  const queue: string[] = [];
+  const scopes = scopesOf(config);
+  const withHost = multiOrigin(scopes);
+  // One queue per scope. With several start URLs, the next page comes from the scope with the
+  // fewest pages started, so maxPages is shared evenly instead of going to the largest section.
+  const queues: string[][] = scopes.map(() => []);
+  const startedIn = scopes.map(() => 0);
+  const queued = () => queues.some((q) => q.length > 0);
+  const next = (): { url: string; scope: number } => {
+    let best = -1;
+    queues.forEach((q, i) => {
+      if (q.length && (best < 0 || startedIn[i] < startedIn[best])) best = i;
+    });
+    return { url: queues[best].shift()!, scope: best };
+  };
   const seen = new Set<string>();
   const pages: PageResult[] = [];
   let axeVersion = 'unknown';
@@ -51,15 +64,16 @@ export async function runAudit(config: AuditConfig, reportDir: string, log: Log)
 
   const enqueue = (raw: string) => {
     const u = normalizeUrl(raw, config.keepQuery);
-    if (!u || seen.has(u) || !inScope(u, config.scope)) return;
-    if (exclude.some((re) => re.test(u))) return;
+    if (!u || seen.has(u)) return;
+    const i = scopeIndex(u, scopes);
+    if (i < 0 || exclude.some((re) => re.test(u))) return;
     seen.add(u);
-    queue.push(u);
+    queues[i].push(u);
   };
 
   const fixed = config.fixedPages !== undefined;
   if (fixed) for (const u of config.fixedPages!) enqueue(u);
-  else enqueue(config.startUrl);
+  else for (const u of startUrlsOf(config)) enqueue(u);
 
   // Final URLs already scanned (or being scanned). A page that redirects to one of them,
   // e.g. "/" routed client-side to "/accueil", is the same page and is not scanned twice.
@@ -70,15 +84,20 @@ export async function runAudit(config: AuditConfig, reportDir: string, log: Log)
   let authLostInARow = 0;
   let stopped: string | undefined;
   const worker = async () => {
-    while (!stopped && queue.length > 0 && started < config.maxPages) {
-      const url = queue.shift()!;
+    while (!stopped && queued() && started < config.maxPages) {
+      const { url, scope } = next();
       if (!claim(url)) continue; // already scanned as another URL's redirect target
       const index = started++;
+      startedIn[scope]++;
       log(`[${index + 1}] ${url}`);
-      const { result, links, version, duplicate } = await scanPage(browser, url, index, config, assetDir, consentState, claim, auth);
+      const { result, links, version, duplicate } = await scanPage(browser, url, index, config, assetDir, consentState, claim, withHost, auth);
       if (version) axeVersion = version;
       pages.push(result);
-      if (duplicate) started--; // a duplicate does not use up the page budget
+      if (duplicate) {
+        // A duplicate does not use up the page budget.
+        started--;
+        startedIn[scope]--;
+      }
       if (result.status !== 'ok') log(`    ${result.status}: ${result.error}`);
       else if (result.redirectedFrom) log(`    → ${result.url}`);
       if (result.status === 'auth-lost') {
@@ -91,7 +110,7 @@ export async function runAudit(config: AuditConfig, reportDir: string, log: Log)
   };
 
   // Workers poll the queue; restart them while the crawl keeps discovering pages.
-  while (!stopped && queue.length > 0 && started < config.maxPages) {
+  while (!stopped && queued() && started < config.maxPages) {
     await Promise.all(Array.from({ length: config.concurrency }, worker));
   }
 
@@ -111,9 +130,11 @@ async function scanPage(
   assetDir: string,
   consentState: { firstChecked: boolean; seen: boolean },
   claim: (finalUrl: string) => boolean,
+  withHost: boolean,
   auth?: AuthSession,
 ): Promise<{ result: PageResult; links: string[]; version?: string; duplicate?: boolean }> {
-  const base: PageResult = { url, path: pathOf(url), status: 'ok', violations: [], incomplete: [], passes: [] };
+  const scopes = scopesOf(config);
+  const base: PageResult = { url, path: pathOf(url, withHost), status: 'ok', violations: [], incomplete: [], passes: [] };
   const context = await browser.newContext({
     viewport: config.viewport,
     reducedMotion: 'reduce',
@@ -131,7 +152,7 @@ async function scanPage(
     base.title = await page.title();
     if (auth) {
       // Logged-out visitors are sent to a login page, often by client-side script after load.
-      if (finalUrl !== url && isLoginUrl(page.url(), config.scope.origin)) {
+      if (finalUrl !== url && isLoginUrl(page.url(), new URL(url).origin)) {
         return { result: { ...base, status: 'auth-lost', error: `redirected to login page ${normalizeUrl(page.url(), false) ?? page.url()}` }, links: [] };
       }
       if (auth.loggedInCheck && !(await page.locator(auth.loggedInCheck).first().isVisible().catch(() => false))) {
@@ -140,16 +161,16 @@ async function scanPage(
     }
     const ctype = resp?.headers()['content-type'] ?? 'text/html';
     if (!ctype.includes('html')) return { result: { ...base, status: 'skipped', error: `content-type ${ctype}` }, links: [] };
-    if (finalUrl !== url && !inScope(finalUrl, config.scope)) {
+    if (finalUrl !== url && scopeIndex(finalUrl, scopes) < 0) {
       return { result: { ...base, status: 'skipped', error: `redirected out of scope to ${finalUrl}` }, links: [] };
     }
     if (resp && resp.status() >= 400) return { result: { ...base, status: 'error', error: `HTTP ${resp.status()}` }, links: [] };
     if (finalUrl !== url) {
       // Server or client-side redirect inside the scope: report the page under its real URL.
       if (!claim(finalUrl)) {
-        return { result: { ...base, status: 'skipped', error: `same page as ${pathOf(finalUrl)} (redirects there), already scanned` }, links: [], duplicate: true };
+        return { result: { ...base, status: 'skipped', error: `same page as ${pathOf(finalUrl, withHost)} (redirects there), already scanned` }, links: [], duplicate: true };
       }
-      Object.assign(base, { url: finalUrl, path: pathOf(finalUrl), redirectedFrom: url });
+      Object.assign(base, { url: finalUrl, path: pathOf(finalUrl, withHost), redirectedFrom: url });
     }
 
     let consent: PageResult['consent'];

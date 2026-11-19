@@ -1,6 +1,7 @@
 import type { AuditConfig, Impact, IssueGroup, PageResult, Report, ScoreBreakdown } from './types.ts';
 import { SCHEMA_VERSION } from './types.ts';
 import { buildGroups } from './group.ts';
+import { scopesLabel, startUrlsOf } from './crawl.ts';
 import { rawSiteOverall, round, SCORING_VERSION, scorePage, scoreSite } from './score.ts';
 
 const IMPACT_ORDER: Record<string, number> = { critical: 0, serious: 1, moderate: 2, minor: 3 };
@@ -153,10 +154,10 @@ export function diffMarkdown(d: ReportDiff): string {
 export function reportMarkdown(r: Report, diff?: ReportDiff): string {
   const s = r.summary;
   const out: string[] = [];
-  out.push(`# Accessibility report: ${r.config.startUrl}`, '');
+  out.push(`# Accessibility report: ${startUrlsOf(r.config).join(' + ')}`, '');
   out.push(
     `Generated ${r.generatedAt} by daredevil ${r.tool.version} (axe-core ${r.tool.axeVersion}, scoring v${r.tool.scoringVersion}, ${r.tool.browser}).`,
-    `Scope: \`${r.config.scope.origin}${r.config.scope.pathPrefix || '/'}\`, ${s.pagesScanned} pages scanned${s.pagesFailed ? `, ${s.pagesFailed} failed` : ''}${s.pagesAuthLost ? `, ${s.pagesAuthLost} lost the session` : ''}.`,
+    `Scope: ${r.config.scopes ? 'several start URLs, ' : ''}\`${scopesLabel(r.config) || '/'}\`, ${s.pagesScanned} pages scanned${s.pagesFailed ? `, ${s.pagesFailed} failed` : ''}${s.pagesAuthLost ? `, ${s.pagesAuthLost} lost the session` : ''}.`,
     '',
   );
   if (r.config.auth) {

@@ -12,6 +12,39 @@ import { buildFixPlan, fixPromptMarkdown } from '../src/fixprompt.ts';
 import { scopeFromUrl } from '../src/crawl.ts';
 import type { AuditConfig } from '../src/types.ts';
 
+test('one audit of several start URLs on two hosts: shared budget, host in page paths', { timeout: 120_000 }, async () => {
+  const a = await serveFixtures();
+  const b = await serveFixtures();
+  try {
+    const startUrls = [`${a.url}/shop`, `${b.url}/shop/product-2.html`];
+    const config: AuditConfig = {
+      startUrl: startUrls[0], scope: scopeFromUrl(startUrls[0]), startUrls, scopes: startUrls.map(scopeFromUrl),
+      maxPages: 4, concurrency: 2,
+      viewport: { width: 1280, height: 800 }, waitMs: 0, timeoutMs: 15000, keepQuery: false,
+      tags: ['wcag2a', 'wcag2aa'], keyboardProbe: false, imageInventory: false, imageScreenshots: false, dismissConsent: false,
+    };
+    const run = await runAudit(config, await mkdtemp(join(tmpdir(), 'dd-')), () => {});
+    const hostA = new URL(a.url).host, hostB = new URL(b.url).host;
+    const paths = run.pages.map((p) => p.path);
+    // /shop on host A has 3 pages, host B's scope (its /shop folder) as well: 4 pages split 2 + 2.
+    assert.equal(paths.filter((p) => p.startsWith(hostA + '/shop')).length, 2, paths.join());
+    assert.equal(paths.filter((p) => p.startsWith(hostB + '/shop')).length, 2, paths.join());
+    assert.ok(paths.includes(`${hostA}/shop`) && paths.includes(`${hostB}/shop/product-2.html`), 'both start pages scanned');
+
+    const report = buildReport(config, run.pages, { version: 'test', axeVersion: run.axeVersion, browser: run.browser });
+    // One root cause across both hosts: same group, pages named with their host.
+    const btn = report.issues.find((g) => g.ruleId === 'button-name')!;
+    assert.ok(btn.pages.some((p) => p.startsWith(hostA)) && btn.pages.some((p) => p.startsWith(hostB)));
+    assert.match(reportMarkdown(report), new RegExp(`Scope: several start URLs, \`${hostA}/shop \\+ ${hostB}/shop\``));
+    assert.ok(renderHtml(report).includes(`${hostA}/<wbr>shop + ${hostB}/<wbr>shop`));
+    const prompt = fixPromptMarkdown(report);
+    assert.ok(prompt.includes(`npm run -s audit -- <url of ${hostA}/shop with your changes> <url of ${hostB}/shop with your changes> --same-pages`));
+  } finally {
+    a.server.close();
+    b.server.close();
+  }
+});
+
 test('audits the /shop subtree of the fixture site', { timeout: 120_000 }, async () => {
   const { url, server } = await serveFixtures();
   try {

@@ -1,6 +1,7 @@
 import type { AssistedFinding, IssueGroup, PageResult, Report } from './types.ts';
 import { normalizeSelector } from './group.ts';
 import { round } from './score.ts';
+import { scopesOf, scopeText } from './crawl.ts';
 
 /**
  * Fix prompt: a self-contained Markdown prompt that an AI coding agent, working in the
@@ -252,12 +253,15 @@ export interface FixPromptOptions {
 export function fixPromptMarkdown(r: Report, opts: FixPromptOptions = {}): string {
   const plan = buildFixPlan(r, opts.findings);
   const s = r.summary;
-  const scope = `${r.config.scope.origin}${r.config.scope.pathPrefix || '/'}`;
+  const scopes = scopesOf(r.config);
+  const scope = scopes.map((x) => `${x.origin}${x.pathPrefix || '/'}`).join(' + ');
   const reportJson = opts.reportDir ? `${opts.reportDir}/report.json` : 'report.json';
   const authArgs = r.config.auth
     ? ` --auth <session file for that site> ${r.config.imageScreenshots ? '--images' : '--no-images'}${r.config.auth.loggedInCheck ? ` --logged-in-check '${r.config.auth.loggedInCheck.replace(/'/g, "'\\''")}'` : ''}`
     : '';
-  const reaudit = `npm run -s audit -- <url of the site with your changes>${r.config.scope.pathPrefix} --same-pages ${reportJson}${authArgs}`;
+  // One start URL per scope, in the same order: the re-audit must cover the same set.
+  const starts = scopes.length === 1 ? `<url of the site with your changes>${scopes[0].pathPrefix}` : scopes.map((x) => `<url of ${scopeText(x)} with your changes>`).join(' ');
+  const reaudit = `npm run -s audit -- ${starts} --same-pages ${reportJson}${authArgs}`;
   const out: string[] = [];
 
   out.push(`# Fix the accessibility defects found on ${scope}`, '');

@@ -2,8 +2,9 @@ import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join, resolve } from 'node:path';
+import { createHash } from 'node:crypto';
 import type { AssistedFinding, AuditConfig, Report } from './types.ts';
-import { scopeFromUrl } from './crawl.ts';
+import { outermost, scopeConflicts, scopeFromUrl, scopesLabel, scopesOf, scopeText } from './crawl.ts';
 import { WCAG_TAGS } from './wcag.ts';
 import { runAudit } from './audit.ts';
 import { buildReport, diffReports, reportMarkdown, type ReportDiff } from './report.ts';
@@ -15,7 +16,8 @@ export const VERSION = '0.1.0';
 
 /** One audit's options, already parsed (from the command line, or from a batch entry). */
 export interface AuditOptions {
-  startUrl: string;
+  /** One or more start URLs. Several make one combined audit (and report) of all their scopes. */
+  startUrls: string[];
   maxPages: number;
   concurrency: number;
   viewport: { width: number; height: number };
@@ -41,7 +43,7 @@ export interface AuditOptions {
 }
 
 /** The options a batch file may set (per entry or as defaults): everything but the URL, screenshots and output. */
-export type AuditSettings = Omit<AuditOptions, 'startUrl' | 'imageScreenshots' | 'out'>;
+export type AuditSettings = Omit<AuditOptions, 'startUrls' | 'imageScreenshots' | 'out'>;
 
 export const DEFAULT_AUDIT_SETTINGS: AuditSettings = {
   maxPages: 25,
@@ -74,10 +76,21 @@ export function parseViewport(v: string): { width: number; height: number } {
 }
 
 /**
- * Checks that need no browser: --exclude patterns, and the session file (present, not expired).
+ * Checks that need no browser: start URLs (valid, no scope twice or inside another), --exclude
+ * patterns, and the session file (present, not expired for any start URL).
  * Throws on the first problem. Returns the session description for logged-in audits.
  */
-export async function checkAuditOptions(o: Pick<AuditOptions, 'startUrl' | 'exclude' | 'auth'>): Promise<{ session?: string }> {
+export async function checkAuditOptions(o: Pick<AuditOptions, 'startUrls' | 'exclude' | 'auth'>): Promise<{ session?: string }> {
+  if (o.startUrls.length === 0) throw new Error('missing start URL');
+  for (const u of o.startUrls) {
+    try {
+      new URL(u);
+    } catch {
+      throw new Error(`not a valid URL: ${u}`);
+    }
+  }
+  const conflicts = scopeConflicts(o.startUrls);
+  if (conflicts.length) throw new Error(conflicts.join('\n'));
   for (const e of o.exclude) {
     try {
       new RegExp(e);
@@ -87,26 +100,35 @@ export async function checkAuditOptions(o: Pick<AuditOptions, 'startUrl' | 'excl
   }
   if (!o.auth) return {};
   const state = await loadAuthState(o.auth);
-  const life = sessionLifetime(state, o.startUrl);
-  if (life.expired) throw new Error(`session in ${o.auth}: ${life.text}\nLog in again with: npm run -s login -- ${o.startUrl}`);
-  return { session: life.text };
+  const lives = o.startUrls.map((u) => ({ url: u, life: sessionLifetime(state, u) }));
+  const lost = lives.find((x) => x.life.expired);
+  if (lost) throw new Error(`session in ${o.auth}: ${lost.life.text}\nLog in again with: npm run -s login -- ${lost.url}`);
+  return { session: lives[0].life.text };
 }
 
-/** Build the AuditConfig: follows the start URL's redirects (logged out only), loads --same-pages. */
+/** Build the AuditConfig: follows the start URLs' redirects (logged out only), loads --same-pages. */
 export async function buildAuditConfig(o: AuditOptions, log: Log): Promise<AuditConfig> {
-  let startUrl = o.startUrl;
-  // Follow redirects (e.g. mysite.com -> www.mysite.com) so the scope matches real URLs.
-  // Not when logged in: this request carries no session, so it would follow the login redirect.
-  if (!o.auth)
-    try {
-      const res = await fetch(startUrl, { redirect: 'follow', signal: AbortSignal.timeout(15000) });
-      if (res.url && res.url !== startUrl) {
-        log(`start URL redirects to ${res.url}`);
-        startUrl = res.url;
+  const startUrls: string[] = [];
+  for (const url of o.startUrls) {
+    let startUrl = url;
+    // Follow redirects (e.g. mysite.com -> www.mysite.com) so the scope matches real URLs.
+    // Not when logged in: this request carries no session, so it would follow the login redirect.
+    if (!o.auth)
+      try {
+        const res = await fetch(startUrl, { redirect: 'follow', signal: AbortSignal.timeout(15000) });
+        if (res.url && res.url !== startUrl) {
+          log(`start URL ${url} redirects to ${res.url}`);
+          startUrl = res.url;
+        }
+      } catch {
+        /* let the browser report the failure */
       }
-    } catch {
-      /* let the browser report the failure */
-    }
+    startUrls.push(startUrl);
+  }
+  // Redirects can make two scopes the same, or one inside another: keep the first / the outer one.
+  const kept = outermost(startUrls);
+  for (const [i, u] of startUrls.entries())
+    if (!kept.includes(u) || startUrls.indexOf(u) !== i) log(`${o.startUrls[i]}: after redirects, another start URL already covers its scope; not used`);
 
   let fixedPages: string[] | undefined;
   if (o.samePages) {
@@ -115,8 +137,9 @@ export async function buildAuditConfig(o: AuditOptions, log: Log): Promise<Audit
   }
   if (o.loggedInCheck && !o.auth) log('--logged-in-check is ignored without --auth');
   return {
-    startUrl,
-    scope: scopeFromUrl(startUrl),
+    startUrl: kept[0],
+    scope: scopeFromUrl(kept[0]),
+    ...(kept.length > 1 ? { startUrls: kept, scopes: kept.map(scopeFromUrl) } : {}),
     maxPages: Math.max(o.maxPages, fixedPages?.length ?? 0),
     concurrency: o.concurrency,
     viewport: o.viewport,
@@ -136,9 +159,16 @@ export async function buildAuditConfig(o: AuditOptions, log: Log): Promise<Audit
   };
 }
 
-/** Folder of a scope's runs. Logged-in runs get their own: diffing them with logged-out runs would be meaningless. */
+/**
+ * Folder of a scope's runs. Logged-in runs get their own: diffing them with logged-out runs would
+ * be meaningless. Several start URLs: their scopes sorted and joined with "+" (the same set in
+ * any order is the same history), shortened with a hash when very long.
+ */
 export function siteSlug(config: AuditConfig): string {
-  return (config.scope.origin.replace(/^https?:\/\//, '') + config.scope.pathPrefix).replace(/[^a-zA-Z0-9.-]+/g, '_') + (config.auth ? '_auth' : '');
+  const slug = (t: string) => t.replace(/[^a-zA-Z0-9.-]+/g, '_');
+  let base = scopesOf(config).map((s) => slug(scopeText(s))).sort().join('+');
+  if (base.length > 120) base = base.slice(0, 100) + '_' + createHash('sha1').update(base).digest('hex').slice(0, 8);
+  return base + (config.auth ? '_auth' : '');
 }
 
 export const timestamp = (d = new Date()) => d.toISOString().replace(/[-:]/g, '').replace(/\..+/, '').replace('T', '-');
@@ -152,7 +182,7 @@ export async function runSingleAudit(config: AuditConfig, out: string, log: Log)
 
   const previous = await previousReport(siteDir, stamp);
 
-  log(`Auditing ${config.scope.origin}${config.scope.pathPrefix || '/'} (max ${config.maxPages} pages)`);
+  log(`Auditing ${scopesLabel(config)} (max ${config.maxPages} pages${config.scopes ? ', shared between the start URLs' : ''})`);
   const run = await runAudit(config, reportDir, log);
   const report = buildReport(config, run.pages, { version: VERSION, axeVersion: run.axeVersion, browser: run.browser, stopped: run.stopped });
   const diff = previous ? diffReports(previous, report) : undefined;

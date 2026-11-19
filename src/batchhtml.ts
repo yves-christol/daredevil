@@ -1,4 +1,4 @@
-import type { BatchEntryResult, BatchReport, EntryStatus } from './batch.ts';
+import type { BatchEntryResult, BatchReport, EntryStatus, SharedIssue } from './batch.ts';
 import { BAND_ICON, BAND_LABEL, band, esc, fmt, impactBadge, markdownToHtml, pageEnd, pageStart, safeHref, signed, type Band } from './htmlkit.ts';
 
 /**
@@ -28,6 +28,30 @@ export function reportHref(e: BatchEntryResult): string | undefined {
 
 const scored = (e: BatchEntryResult) => e.status === 'ok' && e.score !== undefined;
 
+/** Plain relative folder (no scheme, not absolute), or undefined. */
+const relDir = (d: string | undefined) => (d && !/^[a-z][\w+.-]*:/i.test(d) && !d.startsWith('/') ? d.split('\\').join('/') : undefined);
+
+/**
+ * The Change column. With a previous batch, every row compares with it (entries it did not have
+ * are "new"); without one, each row compares with the previous audit of its scope.
+ */
+interface Change {
+  delta?: number;
+  comparable?: boolean;
+  isNew?: boolean;
+  fixed?: number;
+  introduced?: number;
+}
+export function changeOf(b: BatchReport, e: BatchEntryResult): Change {
+  if (!scored(e)) return {};
+  if (b.previous) {
+    if (e.newSincePrevious) return { isNew: true };
+    const p = e.sincePrevious;
+    return p ? { delta: p.delta, comparable: p.comparable, fixed: p.fixed, introduced: p.introduced } : {};
+  }
+  return { delta: e.delta, comparable: e.comparableWithPrevious };
+}
+
 function dateLabel(iso: string): string {
   const d = new Date(iso);
   return isNaN(d.getTime()) ? iso : d.toLocaleString('en-GB', { dateStyle: 'long', timeStyle: 'short', timeZone: 'UTC' }) + ' UTC';
@@ -46,20 +70,24 @@ function bandCounts(entries: BatchEntryResult[]): Record<Band, number> {
   return c;
 }
 
-function row({ e, order }: { e: BatchEntryResult; order: number }): string {
+function row(b: BatchReport, { e, order }: { e: BatchEntryResult; order: number }): string {
   const href = reportHref(e);
   const ok = scored(e);
   const s = e.score;
-  const b = ok ? band(s!.overall) : undefined;
+  const bd = ok ? band(s!.overall) : undefined;
   const num = (v: number | undefined) => (v === undefined ? '' : String(v));
+  const c = changeOf(b, e);
+  const groupsMoved = c.fixed !== undefined && (c.fixed || c.introduced) ? `<br><span class="muted small">${c.fixed} fixed · ${c.introduced} new</span>` : '';
   const delta =
-    ok && e.delta !== undefined
-      ? `<td class="num ${e.delta > 0 ? 'up' : e.delta < 0 ? 'down' : ''}">${signed(e.delta)}${e.comparableWithPrevious === false ? '<br><span class="muted small">other pages</span>' : ''}</td>`
-      : '<td class="num"><span class="muted">–</span></td>';
+    c.delta !== undefined
+      ? `<td class="num ${c.delta > 0 ? 'up' : c.delta < 0 ? 'down' : ''}">${signed(c.delta)}${c.comparable === false ? '<br><span class="muted small">not strictly comparable</span>' : ''}${groupsMoved}</td>`
+      : c.isNew
+        ? '<td class="num"><span class="muted">new</span></td>'
+        : '<td class="num"><span class="muted">–</span></td>';
   const top = e.topIssue;
-  return `<tr data-order="${order}" data-label="${esc(e.label.toLowerCase())}" data-score="${ok ? s!.overall : ''}" data-delta="${ok ? num(e.delta) : ''}" data-pages="${num(e.pagesScanned)}" data-groups="${ok ? num(e.issueGroups) : ''}" data-critical="${ok ? num(e.byImpact?.critical) : ''}">
+  return `<tr data-order="${order}" data-label="${esc(e.label.toLowerCase())}" data-score="${ok ? s!.overall : ''}" data-delta="${num(c.delta)}" data-pages="${num(e.pagesScanned)}" data-groups="${ok ? num(e.issueGroups) : ''}" data-critical="${ok ? num(e.byImpact?.critical) : ''}">
   <th scope="row">${href ? `<a href="${esc(href)}">${esc(e.label)}</a>` : esc(e.label)}<br><span class="muted small entry-url">${esc(e.url.replace(/^https?:\/\//, ''))}${e.loggedIn ? ' · logged in' : ''}</span></th>
-  <td class="num">${ok ? `<span class="pill band-${b}">${s!.overall}</span><br><span class="small band-text-${b}"><span aria-hidden="true">${BAND_ICON[b!]}</span> ${BAND_LABEL[b!]}</span>` : '<span class="muted">–</span>'}</td>
+  <td class="num">${ok ? `<span class="pill band-${bd}">${s!.overall}</span><br><span class="small band-text-${bd}"><span aria-hidden="true">${BAND_ICON[bd!]}</span> ${BAND_LABEL[bd!]}</span>` : '<span class="muted">–</span>'}</td>
   ${delta}
   <td class="num nowrap">${ok ? `${s!.byLevel.A}<span class="muted"> / </span>${s!.byLevel.AA}` : ''}</td>
   <td class="num">${num(e.pagesScanned)}${e.pagesFailed ? `<br><span class="warn-text small">${e.pagesFailed} failed</span>` : ''}</td>
@@ -78,6 +106,7 @@ export function renderBatchHtml(b: BatchReport, extras: BatchExtras = {}): strin
   const nav: [string, string][] = [
     ...(extras.summaryMd ? [['#summary', 'Summary'] as [string, string]] : []),
     ['#entries', 'Results'],
+    ...(b.shared?.length ? [['#shared', 'Shared issues'] as [string, string]] : []),
     ['#method', 'Method'],
   ];
   const stat = (v: number | undefined, label: string) => `<li><strong>${v ?? '–'}</strong><span>${label}</span></li>`;
@@ -95,6 +124,7 @@ export function renderBatchHtml(b: BatchReport, extras: BatchExtras = {}): strin
   <div class="hero-text">
     <h1 id="title">${esc(b.name)}</h1>
     <p class="muted">${dateLabel(b.generatedAt)} · ${s.entries} audit${s.entries === 1 ? '' : 's'} · ${s.ok} scored${s.notOk ? ` · <strong>${s.notOk} without a score</strong>` : ''}${anyLoggedIn ? ' · includes logged-in audits' : ''}</p>
+    ${b.previous ? previousLine(b) : ''}
     ${!b.complete ? `<p class="warn" role="note">⚠ Batch ${pending ? `incomplete: ${pending} audit${pending === 1 ? '' : 's'} not run yet (still running, or interrupted)` : 'did not finish cleanly'}.</p>` : ''}
     ${anyLoggedIn ? '<p class="warn" role="note">⚠ Some audits ran with a saved login session. Their reports may contain personal data from the account. Review before sharing.</p>' : ''}
     <ul class="stats">
@@ -121,8 +151,8 @@ ${extras.summaryMd ? `<section id="summary" aria-labelledby="summary-h" class="p
 
 <section id="entries" aria-labelledby="entries-h">
   <h2 id="entries-h">Results <span class="count">${b.entries.length}</span></h2>
-  <p class="lede">One row per audit, worst score first. Select an entry for its detailed report. Scores: WCAG 2.2 A + AA, mean of each audit's worst pages.<span class="js-only" hidden> Select a column heading to sort.</span></p>
-  <div class="table-wrap" tabindex="0" role="region" aria-labelledby="entries-h"><table class="sortable" id="entries-table">
+  <p class="lede">One row per audit, worst score first. Select an entry for its detailed report. Scores: WCAG 2.2 A + AA, mean of each audit's worst pages. ${b.previous ? `Change: since the previous batch (${esc(dateLabel(b.previous.generatedAt))}).` : 'Change: since the previous audit of the same scope.'}<span class="js-only" hidden> Select a column heading to sort.</span></p>
+  <div class="table-wrap" tabindex="0" role="region" aria-label="Results table, scrollable"><table class="sortable" id="entries-table">
     <caption class="visually-hidden">Audit results, sorted by score, lowest first</caption>
     <thead><tr>
       <th scope="col" data-sort="label">Entry</th>
@@ -136,16 +166,19 @@ ${extras.summaryMd ? `<section id="summary" aria-labelledby="summary-h" class="p
       <th scope="col">Status</th>
     </tr></thead>
     <tbody>
-    ${worstFirst(b.entries).map(row).join('\n')}
+    ${worstFirst(b.entries).map((x) => row(b, x)).join('\n')}
     </tbody>
   </table></div>
   <p class="visually-hidden" aria-live="polite" id="sort-status"></p>
 </section>
 
+${b.shared?.length ? sharedSection(b) : ''}
+
 <section id="method" aria-labelledby="method-h" class="prose">
   <h2 id="method-h">Method and limits</h2>
   <p>Each entry is a separate audit with its own crawl and score (scoring v${esc(b.tool.scoringVersion)}): the mean of that audit's lowest-scoring pages. This page does not combine them into one score. Compare entries only when they were audited with the same options; the detailed reports list the options used.</p>
-  <p><strong>Change</strong> is the difference with the previous audit of the same scope. “Other pages” means the two runs did not scan the same pages: re-run with <code>samePages</code> for a strict comparison.</p>
+  <p><strong>Change</strong> compares each audit with ${b.previous ? 'the same scope in the previous batch of the same name' : 'the previous audit of the same scope'}. “Not strictly comparable” means the two runs scanned different pages, or ran with different tool versions or options: re-run with <code>samePages</code> for a strict comparison.</p>
+  <p><strong>Shared root causes</strong> are issue groups with the same rule and the same signature (component, selector pattern or colour pair) in several audits. Gains are per audit, each on its own score: they do not add up to one number.</p>
   <p><strong>Limits.</strong> Automated rules find only part of WCAG failures. A high score means few detectable violations, not conformance.</p>
   <p class="muted small">daredevil ${esc(b.tool.version)} · batch file <code>${esc(b.source)}</code> · batch schema ${esc(b.schemaVersion)} · data: <code>batch.json</code></p>
 </section>
@@ -165,15 +198,26 @@ export function batchMarkdown(b: BatchReport): string {
     '| Entry | Score | Change | A / AA | Pages | Root causes | Critical | Top issue | Status |',
     '|---|--:|--:|--:|--:|--:|--:|---|---|',
   ];
+  if (b.previous) {
+    const p = b.previous;
+    lines.splice(4, 0, `Compared with the previous batch (${p.generatedAt})${p.summary.median !== undefined && s.median !== undefined ? `: median ${p.summary.median} → ${s.median}` : ''}${p.added.length ? `, ${p.added.length} added` : ''}${p.removed.length ? `, ${p.removed.length} removed (${p.removed.map(cell).join(', ')})` : ''}.`, '');
+  }
   for (const { e } of worstFirst(b.entries)) {
+    const c = changeOf(b, e);
     const ok = scored(e);
     const href = reportHref(e);
     const label = href ? `[${cell(e.label)}](${href})` : cell(e.label);
     lines.push(
-      `| ${label} | ${ok ? `${e.score!.overall} ${BAND_LABEL[band(e.score!.overall)]}` : '–'} | ${ok && e.delta !== undefined ? signed(e.delta) : '–'} | ${ok ? `${e.score!.byLevel.A} / ${e.score!.byLevel.AA}` : ''} | ${e.pagesScanned ?? ''} | ${ok ? (e.issueGroups ?? '') : ''} | ${ok ? (e.byImpact?.critical ?? 0) : ''} | ${ok && e.topIssue ? `\`${e.topIssue.ruleId}\` ${cell(e.topIssue.help)}` : ''} | ${STATUS_LABEL[e.status]}${e.error ? `: ${cell(e.error.split('\n')[0].slice(0, 200))}` : ''} |`,
+      `| ${label} | ${ok ? `${e.score!.overall} ${BAND_LABEL[band(e.score!.overall)]}` : '–'} | ${c.delta !== undefined ? `${signed(c.delta)}${c.comparable === false ? '*' : ''}` : c.isNew ? 'new' : '–'} | ${ok ? `${e.score!.byLevel.A} / ${e.score!.byLevel.AA}` : ''} | ${e.pagesScanned ?? ''} | ${ok ? (e.issueGroups ?? '') : ''} | ${ok ? (e.byImpact?.critical ?? 0) : ''} | ${ok && e.topIssue ? `\`${e.topIssue.ruleId}\` ${cell(e.topIssue.help)}` : ''} | ${STATUS_LABEL[e.status]}${e.error ? `: ${cell(e.error.split('\n')[0].slice(0, 200))}` : ''} |`,
     );
   }
-  lines.push('', 'Each score is that audit\'s own (mean of its worst pages); there is no combined score. Data: `batch.json`.', '');
+  if (b.shared?.length) {
+    lines.push('', '## Shared root causes', '', 'Same rule and signature in several audits: usually one fix in a shared template.', '', '| Root cause | Audits | Elements | Where (gain if fixed) |', '|---|--:|--:|---|');
+    for (const x of b.shared) {
+      lines.push(`| \`${x.ruleId}\` ${cell(x.help)} (\`${cell(x.signature)}\`) | ${x.entries.length} / ${s.ok} | ${x.occurrences} | ${x.entries.map((en) => `${cell(en.label)}${x.scored && en.estimatedScoreGain > 0 ? ` ${signed(en.estimatedScoreGain)}` : ''}`).join(', ')} |`);
+    }
+  }
+  lines.push('', `${b.previous ? 'Change: since the previous batch' : 'Change: since the previous audit of the same scope'}; * = not strictly comparable (other pages, versions or options). Each score is that audit\'s own (mean of its worst pages); there is no combined score. Data: \`batch.json\`.`, '');
   return lines.join('\n');
 }
 
@@ -236,5 +280,46 @@ const CSS = `
 .sortable tbody th { font-weight: 600; min-width: 12rem; }
 .entry-url { font-weight: 400; overflow-wrap: anywhere; }
 .js-only[hidden] { display: none; }
+.shared { min-width: 44rem; }
+.shared tbody th { font-weight: 600; max-width: 32rem; }
+.audits { list-style: none; padding: 0; margin: 0; display: flex; flex-wrap: wrap; gap: .35rem; }
+.audits li { font-size: 14px; border: 1px solid var(--border); border-radius: 999px; padding: .1rem .65rem; }
 @media (max-width: 900px) { .batch-hero { grid-template-columns: 1fr; } }
 `;
+
+function previousLine(b: BatchReport): string {
+  const p = b.previous!;
+  const dir = relDir(p.dir);
+  const when = esc(dateLabel(p.generatedAt));
+  const med = p.summary.median !== undefined && b.summary.median !== undefined ? ` · median ${p.summary.median} → ${b.summary.median}` : '';
+  const moved = [p.added.length && `${p.added.length} audit${p.added.length === 1 ? '' : 's'} added`, p.removed.length && `${p.removed.length} removed (${p.removed.map(esc).join(', ')})`].filter(Boolean).join(' · ');
+  return `<p class="muted">Compared with the previous batch, ${dir ? `<a href="${esc(encodeURI(dir + '/index.html'))}">${when}</a>` : when}${med}${moved ? ` · ${moved}` : ''}</p>`;
+}
+
+function sharedSection(b: BatchReport): string {
+  const scoredCount = b.summary.ok;
+  const item = (x: SharedIssue) => {
+    const audits = x.entries
+      .map((en) => {
+        const href = reportHref(b.entries[en.index] ?? ({} as BatchEntryResult));
+        const label = esc(en.label);
+        const gain = x.scored && en.estimatedScoreGain > 0 ? ` <span class="muted">${signed(en.estimatedScoreGain)}</span>` : '';
+        return `<li>${href ? `<a href="${esc(href)}">${label}</a>` : label}${gain}</li>`;
+      })
+      .join('');
+    return `<tr>
+  <th scope="row">${esc(x.help)}<br><span class="muted small">${impactBadge(x.impact)} <code>${esc(x.ruleId)}</code> <code>${esc(x.signature)}</code></span></th>
+  <td class="num">${x.entries.length}<span class="muted"> / ${scoredCount}</span></td>
+  <td class="num">${fmt(x.occurrences)}</td>
+  <td><ul class="chips audits">${audits}</ul></td>
+</tr>`;
+  };
+  return `<section id="shared" aria-labelledby="shared-h">
+  <h2 id="shared-h">Shared root causes <span class="count">${b.shared!.length}</span></h2>
+  <p class="lede">The same defect, on the same component or style, in several audits. It usually lives in a shared template or stylesheet: one fix repairs every audit listed. Most widespread first; points are the estimated gain on each audit's own score.</p>
+  <div class="table-wrap" tabindex="0" role="region" aria-label="Shared root causes table, scrollable"><table class="shared">
+    <thead><tr><th scope="col">Root cause</th><th scope="col" class="num">Audits</th><th scope="col" class="num">Elements</th><th scope="col">Where (gain if fixed)</th></tr></thead>
+    <tbody>${b.shared!.map(item).join('\n')}</tbody>
+  </table></div>
+</section>`;
+}

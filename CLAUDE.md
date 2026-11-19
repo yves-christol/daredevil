@@ -16,7 +16,7 @@ runs the CLI and adds AI-assisted review, a human summary and a fix handoff.
 ## Layout
 - `src/cli.ts`: argument parsing, the screenshot question, command dispatch
 - `src/run.ts`: one audit end to end (option checks, config, crawl, report files); shared by `audit` and `batch`
-- `src/batch.ts`: batch file parsing, option precedence, pre-flight checks, sequential run, `batch.json`
+- `src/batch.ts`: batch file parsing, option precedence, pre-flight checks, sequential run, `batch.json`, shared root causes (same group id in 2+ audits), comparison with the previous complete batch of the same name
 - `src/crawl.ts`: URL normalisation and scope (`/shop` matches `/shop/**`, not `/shopping`)
 - `src/audit.ts`: browser and BFS crawl, axe scan per page, conversion of axe results
 - `src/probes.ts`: keyboard probe and image inventory (assisted, not scored)
@@ -44,7 +44,7 @@ Subagents cannot write report files, so the agent returns its deliverables as te
 
 ## Invariants
 - UI (report.html, batch index.html) follows `docs/ux-guidelines.md`. Check contrast numerically before adding a colour: the original token table overstates some ratios.
-- Any change to the scoring formula or constants: bump `SCORING_VERSION` in `src/score.ts`. Changing grouping signatures changes group ids: note it, since diffs across that change show false "fixed/new".
+- Any change to the scoring formula or constants: bump `SCORING_VERSION` in `src/score.ts`. Changing grouping signatures changes group ids: note it, since diffs across that change show false "fixed/new" (in reports, and in batch shared root causes and previous-batch comparisons).
 - Code passed to `page.evaluate` must not contain named functions (`const f = () => …`): tsx/esbuild injects a `__name` helper that does not exist in the browser.
 - The score is computed only by code; the agent never adjusts it.
 - Logged-in audits: never handle credentials (the user logs in in the headed window), never put session-file content in a report or a message, never follow logout or account-changing links (`LOGOUT_URL`), and never take image screenshots without the user's explicit yes (`--images`, or the CLI's question); the alt-text inventory is collected either way.

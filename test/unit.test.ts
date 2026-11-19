@@ -233,3 +233,53 @@ test('batch page: escaping, safe relative links, worst first, no combined score'
   assert.match(md, /\| \[Bad\]\(\.\.\/\.\.\/\.\.\/b\.com_auth\/20260101-000000\/report\.html\) \| 41 Critical \|/);
   assert.match(md, /\| Broken \| – \|.*Audit failed: net::ERR <x> \|/);
 });
+
+test('batch: shared root causes, previous batch, change column', async () => {
+  const { sharedIssues, previousInfo } = await import('../src/batch.ts');
+  const { renderBatchHtml, batchMarkdown, changeOf } = await import('../src/batchhtml.ts');
+  const g = (id: string, occurrences: number, gain: number, impact: 'critical' | 'minor' = 'critical') => ({
+    id, ruleId: 'rule-' + id, impact, help: `Help <${id}>`, description: '', helpUrl: 'https://x', wcag: [], level: 'A' as const, principle: 'perceivable' as const,
+    scored: true, signature: `sig <${id}>`, occurrences, pageCount: 1, pages: ['/'], patterns: [], examples: [], estimatedScoreGain: gain,
+  });
+  const ok = (label: string, url: string, extra = {}) => ({ url, label, loggedIn: false, status: 'ok' as const, reportDir: `../../../${label}/s`, score: { overall: 70, byLevel: { A: 70, AA: 90 }, byPrinciple: { perceivable: 1, operable: 1, understandable: 1, robust: 1 }, bestPractice: 80 }, ...extra });
+  const entries = [ok('A', 'https://s.com/a'), ok('B', 'https://s.com/b'), ok('C', 'https://s.com/c'), { url: 'https://s.com/d', label: 'D', loggedIn: false, status: 'error' as const }];
+  const issues = [[g('x', 3, 1), g('y', 1, 5)], [g('x', 2, 2), g('y', 4, 1), g('z', 9, 9)], [g('x', 1, 0.5)], [g('z', 1, 1)]];
+  const shared = sharedIssues(entries, issues);
+  assert.deepEqual(shared.map((s) => s.id), ['x', 'y'], 'in 2+ scored entries, most widespread first; failed entries ignored');
+  assert.equal(shared[0].occurrences, 6);
+  assert.deepEqual(shared[0].entries.map((e) => [e.label, e.estimatedScoreGain]), [['A', 1], ['B', 2], ['C', 0.5]]);
+  assert.equal(sharedIssues(entries, issues, 1).length, 1, 'limit');
+
+  const prevBatch = { entries: [{ url: 'https://s.com/a', label: 'A', loggedIn: false }, { url: 'https://s.com/old', label: 'Old <one>', loggedIn: false }, { url: 'https://s.com/b', label: 'B', loggedIn: true }], generatedAt: '2026-11-01T00:00:00Z', summary: { entries: 3, ok: 3, notOk: 0, median: 60 } };
+  const info = previousInfo({ dir: '/r/_batches/q/20261101-000000', batch: prevBatch as never }, '/r/_batches/q/20261119-000000', entries);
+  assert.equal(info.dir, '../20261101-000000');
+  assert.deepEqual(info.added, ['B', 'C', 'D'], 'B was logged in before: another scope');
+  assert.deepEqual(info.removed, ['Old <one>', 'B'], 'the logged-in B is gone');
+
+  const cur = [
+    { ...entries[0], sincePrevious: { before: 65, delta: 5, comparable: true, fixed: 2, introduced: 1 } },
+    { ...entries[1], newSincePrevious: true as const, delta: 3 },
+    { ...entries[2], sincePrevious: { before: 71, delta: -1, comparable: false } },
+  ];
+  const b = { schemaVersion: '1.0.0', tool: { name: 'daredevil' as const, version: 't', scoringVersion: '2.0.0' }, name: 'q', source: 'q.txt', generatedAt: '2026-11-19T00:00:00Z', complete: true,
+    imageScreenshots: { loggedOut: true, loggedIn: false }, summary: { entries: 3, ok: 3, notOk: 0, min: 70, median: 70, max: 70 }, entries: cur, shared, previous: info };
+  assert.deepEqual(changeOf(b, cur[1]), { isNew: true }, 'with a previous batch, the per-scope delta is not used');
+  assert.equal(changeOf({ ...b, previous: undefined }, cur[1]).delta, 3, 'without one, it is');
+
+  const html = renderBatchHtml(b);
+  assert.match(html, /<a href="\.\.\/20261101-000000\/index\.html">1 November 2026/);
+  assert.match(html, /median 60 → 70/);
+  assert.match(html, /2 removed \(Old &lt;one&gt;, B\)/);
+  assert.match(html, /\+5<br><span class="muted small">2 fixed · 1 new<\/span>/);
+  assert.match(html, /-1<br><span class="muted small">not strictly comparable/);
+  assert.match(html, /<span class="muted">new<\/span>/);
+  assert.match(html, /<h2 id="shared-h">Shared root causes <span class="count">2<\/span>/);
+  assert.match(html, /<a href="\.\.\/\.\.\/\.\.\/B\/s\/report\.html">B<\/a> <span class="muted">\+2<\/span>/);
+  assert.ok(!html.includes('<x>') && !html.includes('sig <'), 'shared issue text is escaped');
+  assert.match(html, /href="#shared">Shared issues/);
+
+  const md = batchMarkdown(b);
+  assert.match(md, /Compared with the previous batch \(2026-11-01T00:00:00Z\): median 60 → 70, 3 added, 2 removed \(Old <one>, B\)\./);
+  assert.match(md, /\| -1\* \|/);
+  assert.match(md, /## Shared root causes[\s\S]*\| `rule-x` Help <x> \(`sig <x>`\) \| 3 \/ 3 \| 6 \| A \+1, B \+2, C \+0\.5 \|/);
+});

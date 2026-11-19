@@ -222,6 +222,15 @@ test('batch: audits each entry into its own history and lists them in batch.json
     assert.equal(batch.entries[1].status, 'no-pages', 'a 404 start page scans nothing');
     assert.equal(batch.summary.entries, 3);
     assert.equal(batch.summary.min, Math.min(...batch.entries.filter((e) => e.status === 'ok').map((e) => e.score!.overall)));
+    assert.equal(batch.previous, undefined, 'first batch of this name');
+
+    // Second run of the same batch name, with one entry: compared with the first, entry by entry.
+    const again = resolveEntries(parseBatchFile(`base: ${url}\n/shop Shop\n`, 'fixture.txt'), { maxPages: 3, waitMs: 0, timeoutMs: 5000, skipImages: true });
+    await new Promise((r) => setTimeout(r, 1100)); // batch folders are per second
+    const second = await runBatch({ name: 'fixture', source: 'fixture.txt', entries: again, imageScreenshots: { loggedOut: false, loggedIn: false }, out, log: () => {} });
+    assert.equal(second.batch.previous?.dir, join('..', batchDir.split('/').pop()!));
+    assert.deepEqual(second.batch.previous?.removed, [batch.entries[1].label, 'Unreachable']);
+    assert.deepEqual(second.batch.entries[0].sincePrevious, { before: shop.score!.overall, delta: 0, comparable: true, fixed: 0, introduced: 0 });
   } finally {
     server.close();
   }

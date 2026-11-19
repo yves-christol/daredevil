@@ -1,7 +1,8 @@
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { basename, extname, join, relative } from 'node:path';
-import type { Impact, Report, ScoreBreakdown } from './types.ts';
+import type { Impact, IssueGroup, Report, ScoreBreakdown } from './types.ts';
+import { diffReports } from './report.ts';
 import { scopeFromUrl } from './crawl.ts';
 import { SCORING_VERSION } from './score.ts';
 import { batchMarkdown, renderBatchHtml } from './batchhtml.ts';
@@ -162,7 +163,7 @@ function parseJsonBatch(text: string, fileName: string): BatchFile {
 }
 
 /** Same rule as the report folder name, so two entries never write into the same history. */
-function scopeKey(url: string, auth: boolean): string {
+export function scopeKey(url: string, auth: boolean): string {
   const s = scopeFromUrl(url);
   return s.origin + (s.pathPrefix || '/') + (auth ? ' (logged in)' : '');
 }
@@ -256,6 +257,30 @@ export interface BatchEntryResult {
   byImpact?: Record<Impact, number>;
   /** The issue group whose fix gains the most points. */
   topIssue?: { id: string; ruleId: string; help: string; impact: Impact | null; signature: string; pageCount: number; estimatedScoreGain: number };
+  /** This scope was not in the previous batch. */
+  newSincePrevious?: true;
+  /** Versus the same scope in the previous batch (when there is one and the entry was scored in both). */
+  sincePrevious?: {
+    before: number;
+    delta: number;
+    /** Same pages, same tool versions and options (see diffReports). */
+    comparable: boolean;
+    /** Issue groups gone / appeared; absent when the previous report could not be read. */
+    fixed?: number;
+    introduced?: number;
+  };
+}
+
+/** A root cause (same rule, same signature, so the same group id) found in several audits. */
+export interface SharedIssue {
+  id: string;
+  ruleId: string;
+  help: string;
+  impact: Impact | null;
+  signature: string;
+  scored: boolean;
+  occurrences: number;
+  entries: { index: number; label: string; occurrences: number; pageCount: number; estimatedScoreGain: number }[];
 }
 
 export interface BatchReport {
@@ -270,6 +295,86 @@ export interface BatchReport {
   /** Descriptive statistics over `ok` entries. Not a score: each entry keeps its own. */
   summary: { entries: number; ok: number; notOk: number; min?: number; median?: number; max?: number };
   entries: BatchEntryResult[];
+  /** Root causes found in at least 2 scored entries, the most widespread first. */
+  shared?: SharedIssue[];
+  /** The latest complete batch with the same name, if any. */
+  previous?: {
+    /** Its folder, relative to this batch's folder. */
+    dir: string;
+    generatedAt: string;
+    summary: BatchReport['summary'];
+    /** Labels of entries only in this batch / only in the previous one. */
+    added: string[];
+    removed: string[];
+  };
+}
+
+export const SHARED_LIMIT = 25;
+
+/** Root causes present in 2+ scored entries, by number of entries, then total estimated gain. */
+export function sharedIssues(entries: BatchEntryResult[], issues: (IssueGroup[] | undefined)[], limit = SHARED_LIMIT): SharedIssue[] {
+  const byId = new Map<string, SharedIssue>();
+  entries.forEach((e, index) => {
+    if (e.status !== 'ok') return;
+    for (const g of issues[index] ?? []) {
+      let s = byId.get(g.id);
+      if (!s) byId.set(g.id, (s = { id: g.id, ruleId: g.ruleId, help: g.help, impact: g.impact, signature: g.signature, scored: g.scored, occurrences: 0, entries: [] }));
+      s.occurrences += g.occurrences;
+      s.entries.push({ index, label: e.label, occurrences: g.occurrences, pageCount: g.pageCount, estimatedScoreGain: g.estimatedScoreGain });
+    }
+  });
+  const gain = (s: SharedIssue) => s.entries.reduce((a, x) => a + x.estimatedScoreGain, 0);
+  return [...byId.values()]
+    .filter((s) => s.entries.length >= 2)
+    .sort((a, b) => b.entries.length - a.entries.length || gain(b) - gain(a) || b.occurrences - a.occurrences)
+    .slice(0, limit);
+}
+
+/** The latest complete batch.json in `batchesDir` (reports/_batches/<slug>/) before `stamp`. */
+export async function findPreviousBatch(batchesDir: string, stamp: string): Promise<{ dir: string; batch: BatchReport } | undefined> {
+  if (!existsSync(batchesDir)) return undefined;
+  const stamps = (await readdir(batchesDir)).filter((d) => d < stamp).sort().reverse();
+  for (const d of stamps) {
+    const file = join(batchesDir, d, 'batch.json');
+    if (!existsSync(file)) continue;
+    try {
+      const b: BatchReport = JSON.parse(await readFile(file, 'utf8'));
+      if (b.complete) return { dir: join(batchesDir, d), batch: b };
+    } catch {
+      /* unreadable: skip */
+    }
+  }
+  return undefined;
+}
+
+const entryKey = (e: { url: string; loggedIn: boolean }) => scopeKey(e.url, e.loggedIn);
+
+/** Compare a scored entry with the same scope in the previous batch, using its report.json when still there. */
+export async function compareWithPrevious(cur: BatchEntryResult, report: Report, prev: { dir: string; batch: BatchReport }): Promise<BatchEntryResult['sincePrevious']> {
+  const p = prev.batch.entries.find((x) => entryKey(x) === entryKey(cur));
+  if (!p || p.status !== 'ok' || !p.score || cur.status !== 'ok' || !cur.score) return undefined;
+  const file = p.reportDir ? join(prev.dir, p.reportDir, 'report.json') : undefined;
+  if (file && existsSync(file)) {
+    try {
+      const d = diffReports(JSON.parse(await readFile(file, 'utf8')), report);
+      return { before: d.overall.before, delta: d.overall.delta, comparable: d.comparable, fixed: d.fixed.length, introduced: d.introduced.length };
+    } catch {
+      /* fall through: score only */
+    }
+  }
+  return { before: p.score.overall, delta: Math.round((cur.score.overall - p.score.overall) * 10) / 10, comparable: false };
+}
+
+export function previousInfo(prev: { dir: string; batch: BatchReport }, batchDir: string, entries: { url: string; label: string; loggedIn: boolean }[]): NonNullable<BatchReport['previous']> {
+  const now = new Set(entries.map(entryKey));
+  const before = new Set(prev.batch.entries.map(entryKey));
+  return {
+    dir: relative(batchDir, prev.dir),
+    generatedAt: prev.batch.generatedAt,
+    summary: prev.batch.summary,
+    added: entries.filter((e) => !before.has(entryKey(e))).map((e) => e.label),
+    removed: prev.batch.entries.filter((e) => !now.has(entryKey(e))).map((e) => e.label),
+  };
 }
 
 export function entryResult(e: BatchEntry, r: { reportDir: string; report: Report; diff?: { overall: { delta: number }; comparable: boolean } }, batchDir: string): BatchEntryResult {
@@ -331,8 +436,13 @@ export interface RunBatchOptions {
 
 /** Run entries one after another. A failing entry is recorded and the batch goes on. batch.json is rewritten after each entry. */
 export async function runBatch(o: RunBatchOptions): Promise<{ batchDir: string; batch: BatchReport }> {
-  const batchDir = join(o.out, '_batches', batchSlug(o.name), timestamp());
+  const batchesDir = join(o.out, '_batches', batchSlug(o.name));
+  const stamp = timestamp();
+  const batchDir = join(batchesDir, stamp);
   await mkdir(batchDir, { recursive: true });
+  const prev = await findPreviousBatch(batchesDir, stamp);
+  /** Issue groups of each entry, kept in memory for the shared root causes. */
+  const issues: (IssueGroup[] | undefined)[] = [];
   const batch: BatchReport = {
     schemaVersion: BATCH_SCHEMA_VERSION,
     tool: { name: 'daredevil', version: VERSION, scoringVersion: SCORING_VERSION },
@@ -344,9 +454,16 @@ export async function runBatch(o: RunBatchOptions): Promise<{ batchDir: string; 
     summary: batchSummary([]),
     entries: o.entries.map((e) => ({ url: e.url, label: e.label, loggedIn: !!e.options.auth, status: 'pending' })),
   };
+  const prevKeys = new Set(prev?.batch.entries.map(entryKey));
+  if (prev) {
+    batch.previous = previousInfo(prev, batchDir, batch.entries);
+    for (const e of batch.entries) if (!prevKeys.has(entryKey(e))) e.newSincePrevious = true;
+  }
   // Rewritten after each entry: the page shows progress, and an interrupted batch keeps what was done.
   const save = async () => {
     batch.summary = batchSummary(batch.entries);
+    const shared = sharedIssues(batch.entries, issues);
+    if (shared.length) batch.shared = shared;
     await writeBatchFiles(batchDir, batch);
   };
   await save();
@@ -358,8 +475,14 @@ export async function runBatch(o: RunBatchOptions): Promise<{ batchDir: string; 
       const imageScreenshots = e.options.auth ? o.imageScreenshots.loggedIn : o.imageScreenshots.loggedOut;
       const config = await buildAuditConfig({ ...e.options, imageScreenshots, out: o.out }, o.log);
       const result = await runSingleAudit(config, o.out, o.log);
-      batch.entries[i] = { ...entryResult(e, result, batchDir), durationMs: Date.now() - started };
-      const r = batch.entries[i];
+      const r: BatchEntryResult = { ...entryResult(e, result, batchDir), durationMs: Date.now() - started };
+      if (prev && !prevKeys.has(entryKey(r))) r.newSincePrevious = true;
+      if (prev) {
+        const since = await compareWithPrevious(r, result.report, prev);
+        if (since) r.sincePrevious = since;
+      }
+      batch.entries[i] = r;
+      issues[i] = result.report.issues;
       o.log(`[${i + 1}/${o.entries.length}] ${r.status === 'ok' ? `score ${r.score!.overall}` : r.status}`);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);

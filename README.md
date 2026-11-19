@@ -1,4 +1,6 @@
-# daredevil
+<p align="center"><img src="assets/logo.svg" width="120" alt="daredevil logo: two interlocking D's inside yellow focus-ring corner brackets"></p>
+
+<h1 align="center">daredevil</h1>
 
 **Accessibility audits you can measure, compare and hand to an AI to fix.**
 
@@ -87,6 +89,8 @@ Each run writes to `reports/<site-and-path>/<timestamp>/`:
 ![HTML report: score panel](docs/report-html.png)
 
 ![HTML report: prioritised issues, one expanded](docs/report-html-issues.png)
+
+Its design follows the project's [UX guidelines](docs/ux-guidelines.md): the logo's charcoal canvas and yellow corner-bracket focus rings, outlined status badges that pair every colour with an icon and a label, and offset "layer" cards for evidence. It has a light theme too, following the reader's OS setting, with a toggle.
 
 It contains the score panel and breakdown, the agent's summary, the change since the last run, issues by priority (filterable by impact, each expandable to locations and evidence), the AI-assisted findings with their confidence, the undecided items, the keyboard probe, a gallery of image screenshots next to their alt text, and the page list.
 
@@ -366,10 +370,11 @@ src/score.ts     scoring model (bump SCORING_VERSION on any change)
 src/report.ts    report.json assembly, diff, markdown rendering
 src/html.ts      HTML report
 src/consent.ts   cookie-dialog dismissal
+src/brand.ts     logo embedding (assets/logo.svg)
 .claude/agents/daredevil.md   the Claude Code agent
 ```
 
-See `CLAUDE.md` for the project's rules: the scoring versioning, and the constraint on code run inside the browser.
+Any UI work follows [`docs/ux-guidelines.md`](docs/ux-guidelines.md), including its verified contrast notes. See `CLAUDE.md` for the project's rules: the scoring versioning, and the constraint on code run inside the browser.
 
 ## License
 

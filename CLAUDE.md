@@ -20,6 +20,8 @@ runs the CLI and adds AI-assisted review, a human summary and a fix handoff.
 - `src/report.ts`: report.json assembly, diff, markdown
 - `src/html.ts`: self-contained HTML report (escapes all site-derived content; must itself stay accessible)
 - `src/consent.ts`: cookie-dialog dismissal ("reject", never "accept")
+- `src/brand.ts`: embeds `assets/logo.svg` (inline header logo + favicon)
+- `docs/ux-guidelines.md`: brand and UX guidelines; its "Implementation notes" list the verified contrast values to use
 
 ## When the daredevil subagent returns
 Subagents cannot write report files, so the agent returns its deliverables as text. When its final message arrives:
@@ -28,6 +30,7 @@ Subagents cannot write report files, so the agent returns its deliverables as te
 3. Run `npm run -s render -- <REPORT_DIR>`, then give the user the brief and the path of `report.html`.
 
 ## Invariants
+- UI (report.html) follows `docs/ux-guidelines.md`. Check contrast numerically before adding a colour: the original token table overstates some ratios.
 - Any change to the scoring formula or constants: bump `SCORING_VERSION` in `src/score.ts`. Changing grouping signatures changes group ids: note it, since diffs across that change show false "fixed/new".
 - Code passed to `page.evaluate` must not contain named functions (`const f = () => …`): tsx/esbuild injects a `__name` helper that does not exist in the browser.
 - The score is computed only by code; the agent never adjusts it.

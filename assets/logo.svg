@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="200" height="200" role="img" aria-label="Daredevil Interlocking DD Logo">
+  <rect width="200" height="200" rx="40" fill="#18181B" />
+  <!-- Focus Ring Corners -->
+  <path d="M 35 60 L 35 35 L 60 35 M 140 35 L 165 35 L 165 60 M 165 140 L 165 165 L 140 165 M 60 165 L 35 165 L 35 140" fill="none" stroke="#FACC15" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" />
+  <!-- Back 'D' -->
+  <path d="M 60 55 H 95 C 125 55 140 73 140 95 C 140 117 125 135 95 135 H 60 Z" fill="none" stroke="#EF4444" stroke-width="12" stroke-linejoin="round" />
+  <!-- Front 'D' -->
+  <path d="M 78 72 H 113 C 143 72 158 90 158 112 C 158 134 143 152 113 152 H 78 Z" fill="none" stroke="#FFFFFF" stroke-width="12" stroke-linejoin="round" />
+</svg>

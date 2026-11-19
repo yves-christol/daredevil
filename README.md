@@ -63,7 +63,7 @@ The URL's path bounds the crawl. daredevil starts at the URL and follows links b
 | `https://www.mysite.com/shop/index.html` | the `/shop` directory, as above | |
 | `https://www.mysite.com` | the whole site, up to `--max-pages` | |
 
-Fragments (`#…`) and query strings are ignored for de-duplication; use `--keep-query` to keep query strings. Non-HTML resources (PDF, images…) are skipped. Redirects of the start URL (e.g. `mysite.com` to `www.mysite.com`) are followed before the scope is fixed.
+Fragments (`#…`) and query strings are ignored for de-duplication; use `--keep-query` to keep query strings. Non-HTML resources (PDF, images…) are skipped. Redirects of the start URL (e.g. `mysite.com` to `www.mysite.com`) are followed before the scope is fixed. A page that redirects inside the scope, on the server or client-side (e.g. `/` routed to `/accueil`), is reported under its final URL; when that page was already scanned, the redirecting URL is listed as a skipped duplicate and does not count against `--max-pages`.
 
 ### Pages behind a login
 

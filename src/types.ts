@@ -89,6 +89,8 @@ export interface PageResult {
   path: string;
   /** `auth-lost`: an authenticated page landed on a login page (session expired or rejected). */
   status: 'ok' | 'error' | 'skipped' | 'auth-lost';
+  /** The URL that was requested, when it redirected (server or client-side) to `url`. */
+  redirectedFrom?: string;
   error?: string;
   title?: string;
   httpStatus?: number;

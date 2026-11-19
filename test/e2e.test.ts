@@ -97,7 +97,7 @@ test('login saves a session, and a logged-in audit crawls the account without lo
       },
     });
     assert.equal(saved.reason, 'back on the site after logging in');
-    assert.match(saved.finalUrl, /\/account$/);
+    assert.match(saved.finalUrl, /\/account\/home$/);
     assert.equal((await stat(stateFile)).mode & 0o777, 0o600);
     const state = JSON.parse(await readFile(stateFile, 'utf8'));
     assert.ok(state.cookies.some((c: { name: string }) => c.name === 'dd_session'));
@@ -110,7 +110,9 @@ test('login saves a session, and a logged-in audit crawls the account without lo
       auth: { stateFile, loggedInCheck: '#account-menu' },
     };
     const run = await runAudit(config, dir, () => {});
-    assert.deepEqual(run.pages.map((p) => [p.path, p.status]), [['/account', 'ok'], ['/account/invoices.html', 'ok']]);
+    // "/account" is routed client-side to "/account/home", which other pages also link to: scanned once
+    assert.deepEqual(run.pages.map((p) => [p.path, p.status]), [['/account/home', 'ok'], ['/account/invoices.html', 'ok']]);
+    assert.equal(run.pages[0].redirectedFrom, `${url}/account`);
     assert.equal(run.stopped, undefined);
 
     const report = buildReport(config, run.pages, { version: 'test', axeVersion: run.axeVersion, browser: run.browser });
@@ -148,6 +150,33 @@ test('an expired session is reported as auth-lost and stops the crawl', { timeou
     assert.equal(report.summary.pagesScanned, 0);
     assert.equal(report.summary.pagesAuthLost, 1);
     assert.match(renderHtml(report), /Crawl stopped early/);
+  } finally {
+    server.close();
+  }
+});
+
+test('a page that redirects to an already-scanned page is skipped as a duplicate', { timeout: 60_000 }, async () => {
+  const { url, server } = await serveFixtures();
+  try {
+    const dir = await mkdtemp(join(tmpdir(), 'dd-dup-'));
+    const stateFile = join(dir, 's.json');
+    const host = new URL(url).hostname;
+    await writeFile(stateFile, JSON.stringify({ cookies: [{ name: 'dd_session', value: 'ok', domain: host, path: '/', expires: -1, httpOnly: false, secure: false, sameSite: 'Lax' }], origins: [] }));
+    // fixed order: the target first, then the URL that redirects to it
+    const config: AuditConfig = {
+      ...baseConfig(`${url}/account`),
+      concurrency: 1,
+      maxPages: 2,
+      auth: { stateFile },
+      fixedPages: [`${url}/account/home`, `${url}/account`, `${url}/account/invoices.html`],
+    };
+    const run = await runAudit(config, dir, () => {});
+    const byPath = Object.fromEntries(run.pages.map((p) => [p.path, p]));
+    assert.equal(byPath['/account/home'].status, 'ok');
+    assert.equal(byPath['/account'].status, 'skipped');
+    assert.match(byPath['/account'].error ?? '', /same page as \/account\/home/);
+    // the duplicate does not use up the page budget: invoices is still scanned with maxPages 2
+    assert.equal(byPath['/account/invoices.html']?.status, 'ok');
   } finally {
     server.close();
   }

@@ -61,18 +61,26 @@ export async function runAudit(config: AuditConfig, reportDir: string, log: Log)
   if (fixed) for (const u of config.fixedPages!) enqueue(u);
   else enqueue(config.startUrl);
 
+  // Final URLs already scanned (or being scanned). A page that redirects to one of them,
+  // e.g. "/" routed client-side to "/accueil", is the same page and is not scanned twice.
+  const claimed = new Set<string>();
+  const claim = (u: string) => (claimed.has(u) ? false : (claimed.add(u), true));
+
   let started = 0;
   let authLostInARow = 0;
   let stopped: string | undefined;
   const worker = async () => {
     while (!stopped && queue.length > 0 && started < config.maxPages) {
       const url = queue.shift()!;
+      if (!claim(url)) continue; // already scanned as another URL's redirect target
       const index = started++;
       log(`[${index + 1}] ${url}`);
-      const { result, links, version } = await scanPage(browser, url, index, config, assetDir, consentState, auth);
+      const { result, links, version, duplicate } = await scanPage(browser, url, index, config, assetDir, consentState, claim, auth);
       if (version) axeVersion = version;
       pages.push(result);
+      if (duplicate) started--; // a duplicate does not use up the page budget
       if (result.status !== 'ok') log(`    ${result.status}: ${result.error}`);
+      else if (result.redirectedFrom) log(`    → ${result.url}`);
       if (result.status === 'auth-lost') {
         if (++authLostInARow >= AUTH_LOST_LIMIT || pages.length === 1) {
           stopped ??= `session lost: ${authLostInARow} page${authLostInARow === 1 ? '' : 's'} in a row landed on a login page; log in again with \`npm run -s login -- ${config.startUrl}\``;
@@ -102,8 +110,9 @@ async function scanPage(
   config: AuditConfig,
   assetDir: string,
   consentState: { firstChecked: boolean; seen: boolean },
+  claim: (finalUrl: string) => boolean,
   auth?: AuthSession,
-): Promise<{ result: PageResult; links: string[]; version?: string }> {
+): Promise<{ result: PageResult; links: string[]; version?: string; duplicate?: boolean }> {
   const base: PageResult = { url, path: pathOf(url), status: 'ok', violations: [], incomplete: [], passes: [] };
   const context = await browser.newContext({
     viewport: config.viewport,
@@ -135,6 +144,13 @@ async function scanPage(
       return { result: { ...base, status: 'skipped', error: `redirected out of scope to ${finalUrl}` }, links: [] };
     }
     if (resp && resp.status() >= 400) return { result: { ...base, status: 'error', error: `HTTP ${resp.status()}` }, links: [] };
+    if (finalUrl !== url) {
+      // Server or client-side redirect inside the scope: report the page under its real URL.
+      if (!claim(finalUrl)) {
+        return { result: { ...base, status: 'skipped', error: `same page as ${pathOf(finalUrl)} (redirects there), already scanned` }, links: [], duplicate: true };
+      }
+      Object.assign(base, { url: finalUrl, path: pathOf(finalUrl), redirectedFrom: url });
+    }
 
     let consent: PageResult['consent'];
     if (config.dismissConsent) {

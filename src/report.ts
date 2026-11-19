@@ -8,7 +8,7 @@ const IMPACT_ORDER: Record<string, number> = { critical: 0, serious: 1, moderate
 export function buildReport(
   config: AuditConfig,
   pages: PageResult[],
-  meta: { version: string; axeVersion: string; browser: string },
+  meta: { version: string; axeVersion: string; browser: string; stopped?: string },
 ): Report {
   for (const p of pages) if (p.status === 'ok') p.score = scorePage(p);
 
@@ -40,6 +40,8 @@ export function buildReport(
       score,
       pagesScanned: pages.filter((p) => p.status === 'ok').length,
       pagesFailed: pages.filter((p) => p.status === 'error').length,
+      ...(config.auth ? { pagesAuthLost: pages.filter((p) => p.status === 'auth-lost').length } : {}),
+      ...(meta.stopped ? { stopped: meta.stopped } : {}),
       violations: { groups: issues.length, nodes: issues.reduce((a, g) => a + g.occurrences, 0), byImpact },
       needsReview: { groups: needsReview.length, nodes: needsReview.reduce((a, g) => a + g.occurrences, 0) },
     },
@@ -68,6 +70,9 @@ export function diffReports(a: Report, b: Report): ReportDiff {
   if (a.tool.axeVersion !== b.tool.axeVersion) warnings.push(`axe-core version differs (${a.tool.axeVersion} → ${b.tool.axeVersion}): rule set may differ`);
   if ((a.config.dismissConsent ?? false) !== (b.config.dismissConsent ?? false)) {
     warnings.push(`cookie-consent handling differs (dismissed: ${a.config.dismissConsent ?? false} → ${b.config.dismissConsent ?? false}): the dialog changes what is tested`);
+  }
+  if (!!a.config.auth !== !!b.config.auth) {
+    warnings.push(`login state differs (${a.config.auth ? 'logged in' : 'logged out'} → ${b.config.auth ? 'logged in' : 'logged out'}): different pages and content are tested`);
   }
   const pathsA = new Set(a.pages.filter((p) => p.status === 'ok').map((p) => p.path));
   const pathsB = new Set(b.pages.filter((p) => p.status === 'ok').map((p) => p.path));
@@ -151,9 +156,16 @@ export function reportMarkdown(r: Report, diff?: ReportDiff): string {
   out.push(`# Accessibility report: ${r.config.startUrl}`, '');
   out.push(
     `Generated ${r.generatedAt} by daredevil ${r.tool.version} (axe-core ${r.tool.axeVersion}, scoring v${r.tool.scoringVersion}, ${r.tool.browser}).`,
-    `Scope: \`${r.config.scope.origin}${r.config.scope.pathPrefix || '/'}\`, ${s.pagesScanned} pages scanned${s.pagesFailed ? `, ${s.pagesFailed} failed` : ''}.`,
+    `Scope: \`${r.config.scope.origin}${r.config.scope.pathPrefix || '/'}\`, ${s.pagesScanned} pages scanned${s.pagesFailed ? `, ${s.pagesFailed} failed` : ''}${s.pagesAuthLost ? `, ${s.pagesAuthLost} lost the session` : ''}.`,
     '',
   );
+  if (r.config.auth) {
+    out.push(
+      '> **Logged-in audit.** Pages were scanned with a saved login session. This report may contain personal data from the account (names, addresses, numbers in HTML snippets and screenshots): review it before sharing.',
+      '',
+    );
+  }
+  if (s.stopped) out.push(`> **Crawl stopped early:** ${s.stopped}`, '');
   out.push(`## Score: ${s.score.overall} / 100`, '');
   out.push('| Dimension | Score |', '|---|---:|');
   out.push(`| **Overall (WCAG A+AA)** | **${s.score.overall}** |`);

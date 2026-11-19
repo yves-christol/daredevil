@@ -4,6 +4,7 @@ import { inScope, normalizeUrl, scopeFromUrl } from '../src/crawl.ts';
 import { levelOf, principleOf, successCriteria } from '../src/wcag.ts';
 import { nodeSignature, normalizeSelector } from '../src/group.ts';
 import { scorePage } from '../src/score.ts';
+import { LOGOUT_URL, defaultStateFile, isLoginUrl, sessionLifetime } from '../src/auth.ts';
 import type { PageResult, Report, RuleResult } from '../src/types.ts';
 
 test('scope: /shop includes subpaths but not /shopping', () => {
@@ -108,4 +109,27 @@ test('fix prompt: categories, one MR per category, safe fences, handoff appended
   assert.match(md, /--same-pages \/r\/report\.json/);
   assert.ok(md.includes('````html\n    <button>```evil```</button>\n    ````'), 'fence must outlast backticks in site HTML');
   assert.match(md, /## Appendix: auditor fix guidance[\s\S]*### Handoff[\s\S]*#### Tasks/);
+});
+
+test('auth: login pages, logout links, session lifetime', () => {
+  const o = 'https://espace-client.orange.fr';
+  assert.ok(isLoginUrl('https://login.orange.fr/?return_url=x', o), 'another origin is the login page');
+  assert.ok(isLoginUrl(`${o}/login?next=/factures`, o));
+  assert.ok(isLoginUrl(`${o}/auth/callback`, o));
+  assert.ok(!isLoginUrl(`${o}/factures-paiement`, o));
+  assert.ok(!isLoginUrl(`${o}/authors`, o), 'login words must be whole path segments');
+
+  for (const u of ['/logout', '/account/log-out.html', '/se-deconnecter', '/deconnexion', '/auth/signout']) assert.ok(LOGOUT_URL.test(u), u);
+  for (const u of ['/logos', '/account/invoices', '/connexion-internet']) assert.ok(!LOGOUT_URL.test(u), u);
+
+  assert.equal(defaultStateFile('https://espace-client.orange.fr/x'), '.auth/espace-client.orange.fr.json');
+
+  const now = Date.parse('2026-11-19T12:00:00Z');
+  const cookie = (name: string, domain: string, expires: number) => ({ name, value: 'v', domain, path: '/', expires, httpOnly: true, secure: true, sameSite: 'Lax' as const });
+  const state = { cookies: [cookie('s', '.orange.fr', -1), cookie('t', 'espace-client.orange.fr', now / 1000 + 3600), cookie('x', 'other.com', -1)], origins: [] };
+  const life = sessionLifetime(state, `${o}/`, now);
+  assert.equal(life.expired, false);
+  assert.match(life.text, /^2 cookies for espace-client.orange.fr, 1 session-only.*first expiry 2026-11-19T13:00:00Z$/);
+  const old = { cookies: [cookie('t', '.orange.fr', now / 1000 - 10)], origins: [] };
+  assert.equal(sessionLifetime(old, `${o}/`, now).expired, true);
 });

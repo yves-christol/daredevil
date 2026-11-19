@@ -9,11 +9,24 @@ import { groupId, nodeSignature } from './group.ts';
 import { levelOf, principleOf, successCriteria } from './wcag.ts';
 import { imageInventory, keyboardProbe } from './probes.ts';
 import { dismissConsent } from './consent.ts';
+import { defaultUserAgent, isLoginUrl, loadAuthState, type StorageState } from './auth.ts';
 
 export interface AuditRun {
   pages: PageResult[];
   axeVersion: string;
   browser: string;
+  /** Why the crawl stopped before exhausting the queue, if it did. */
+  stopped?: string;
+}
+
+/** Consecutive `auth-lost` pages after which an authenticated crawl gives up. */
+const AUTH_LOST_LIMIT = 2;
+
+/** Shared crawl state for authenticated audits. */
+interface AuthSession {
+  /** Latest storage state: refreshed after each good page, so rotated session cookies carry over. */
+  state: StorageState;
+  loggedInCheck?: string;
 }
 
 type Log = (msg: string) => void;
@@ -22,13 +35,12 @@ export async function runAudit(config: AuditConfig, reportDir: string, log: Log)
   const assetDir = `${reportDir}/assets`;
   if (config.imageCapture) await mkdir(assetDir, { recursive: true });
 
+  const auth: AuthSession | undefined = config.auth
+    ? { state: await loadAuthState(config.auth.stateFile), loggedInCheck: config.auth.loggedInCheck }
+    : undefined;
+  const exclude = (config.exclude ?? []).map((e) => new RegExp(e, 'i'));
   const browser = await chromium.launch();
-  if (!config.userAgent) {
-    const probe = await browser.newPage();
-    const ua = await probe.evaluate(() => navigator.userAgent);
-    await probe.close();
-    config.userAgent = ua.replace('HeadlessChrome', 'Chrome') + ' daredevil-a11y/0.1';
-  }
+  if (!config.userAgent) config.userAgent = await defaultUserAgent(browser);
   const queue: string[] = [];
   const seen = new Set<string>();
   const pages: PageResult[] = [];
@@ -40,6 +52,7 @@ export async function runAudit(config: AuditConfig, reportDir: string, log: Log)
   const enqueue = (raw: string) => {
     const u = normalizeUrl(raw, config.keepQuery);
     if (!u || seen.has(u) || !inScope(u, config.scope)) return;
+    if (exclude.some((re) => re.test(u))) return;
     seen.add(u);
     queue.push(u);
   };
@@ -49,21 +62,28 @@ export async function runAudit(config: AuditConfig, reportDir: string, log: Log)
   else enqueue(config.startUrl);
 
   let started = 0;
+  let authLostInARow = 0;
+  let stopped: string | undefined;
   const worker = async () => {
-    while (queue.length > 0 && started < config.maxPages) {
+    while (!stopped && queue.length > 0 && started < config.maxPages) {
       const url = queue.shift()!;
       const index = started++;
       log(`[${index + 1}] ${url}`);
-      const { result, links, version } = await scanPage(browser, url, index, config, assetDir, consentState);
+      const { result, links, version } = await scanPage(browser, url, index, config, assetDir, consentState, auth);
       if (version) axeVersion = version;
       pages.push(result);
       if (result.status !== 'ok') log(`    ${result.status}: ${result.error}`);
+      if (result.status === 'auth-lost') {
+        if (++authLostInARow >= AUTH_LOST_LIMIT || pages.length === 1) {
+          stopped ??= `session lost: ${authLostInARow} page${authLostInARow === 1 ? '' : 's'} in a row landed on a login page; log in again with \`npm run -s login -- ${config.startUrl}\``;
+        }
+      } else if (result.status === 'ok') authLostInARow = 0;
       if (!fixed) for (const l of links) enqueue(l);
     }
   };
 
   // Workers poll the queue; restart them while the crawl keeps discovering pages.
-  while (queue.length > 0 && started < config.maxPages) {
+  while (!stopped && queue.length > 0 && started < config.maxPages) {
     await Promise.all(Array.from({ length: config.concurrency }, worker));
   }
 
@@ -71,7 +91,8 @@ export async function runAudit(config: AuditConfig, reportDir: string, log: Log)
   await browser.close();
   // Stable order regardless of concurrency timing.
   pages.sort((a, b) => a.url.localeCompare(b.url));
-  return { pages, axeVersion, browser: browserVersion };
+  if (stopped) log(stopped);
+  return { pages, axeVersion, browser: browserVersion, stopped };
 }
 
 async function scanPage(
@@ -81,9 +102,15 @@ async function scanPage(
   config: AuditConfig,
   assetDir: string,
   consentState: { firstChecked: boolean; seen: boolean },
+  auth?: AuthSession,
 ): Promise<{ result: PageResult; links: string[]; version?: string }> {
   const base: PageResult = { url, path: pathOf(url), status: 'ok', violations: [], incomplete: [], passes: [] };
-  const context = await browser.newContext({ viewport: config.viewport, reducedMotion: 'reduce', userAgent: config.userAgent });
+  const context = await browser.newContext({
+    viewport: config.viewport,
+    reducedMotion: 'reduce',
+    userAgent: config.userAgent,
+    storageState: auth?.state,
+  });
   const page = await context.newPage();
   try {
     const resp = await page.goto(url, { waitUntil: 'load', timeout: config.timeoutMs });
@@ -93,6 +120,15 @@ async function scanPage(
     const finalUrl = normalizeUrl(page.url(), config.keepQuery) ?? url;
     base.httpStatus = resp?.status();
     base.title = await page.title();
+    if (auth) {
+      // Logged-out visitors are sent to a login page, often by client-side script after load.
+      if (finalUrl !== url && isLoginUrl(page.url(), config.scope.origin)) {
+        return { result: { ...base, status: 'auth-lost', error: `redirected to login page ${normalizeUrl(page.url(), false) ?? page.url()}` }, links: [] };
+      }
+      if (auth.loggedInCheck && !(await page.locator(auth.loggedInCheck).first().isVisible().catch(() => false))) {
+        return { result: { ...base, status: 'auth-lost', error: `logged-in check not found: ${auth.loggedInCheck}` }, links: [] };
+      }
+    }
     const ctype = resp?.headers()['content-type'] ?? 'text/html';
     if (!ctype.includes('html')) return { result: { ...base, status: 'skipped', error: `content-type ${ctype}` }, links: [] };
     if (finalUrl !== url && !inScope(finalUrl, config.scope)) {
@@ -127,6 +163,8 @@ async function scanPage(
       const prefix = `p${String(index + 1).padStart(3, '0')}-${createHash('sha1').update(url).digest('hex').slice(0, 6)}`;
       result.images = await imageInventory(page, assetDir, prefix).catch(probeError('images'));
     }
+    // Carry rotated session cookies over to the next pages.
+    if (auth) auth.state = await context.storageState().catch(() => auth.state);
     return { result, links, version: axe.testEngine.version };
   } catch (e) {
     return { result: { ...base, status: 'error', error: (e as Error).message.split('\n')[0] }, links: [] };

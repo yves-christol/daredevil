@@ -25,6 +25,17 @@ export interface AuditConfig {
   imageCapture: boolean;
   /** When set, the crawl is replaced by this fixed page list (for comparable re-runs). */
   fixedPages?: string[];
+  /** URL patterns (regex sources, case-insensitive) never enqueued. */
+  exclude?: string[];
+  /** Authenticated audit: a saved login session is loaded into every page. */
+  auth?: AuthConfig;
+}
+
+export interface AuthConfig {
+  /** Path of the Playwright storage-state file (its content never goes into a report). */
+  stateFile: string;
+  /** CSS selector visible only when logged in; its absence marks the page `auth-lost`. */
+  loggedInCheck?: string;
 }
 
 export interface NodeResult {
@@ -76,7 +87,8 @@ export interface ImageInfo {
 export interface PageResult {
   url: string;
   path: string;
-  status: 'ok' | 'error' | 'skipped';
+  /** `auth-lost`: an authenticated page landed on a login page (session expired or rejected). */
+  status: 'ok' | 'error' | 'skipped' | 'auth-lost';
   error?: string;
   title?: string;
   httpStatus?: number;
@@ -137,6 +149,10 @@ export interface Report {
     score: ScoreBreakdown;
     pagesScanned: number;
     pagesFailed: number;
+    /** Pages that landed on a login page during an authenticated audit. */
+    pagesAuthLost?: number;
+    /** Why the crawl stopped early, if it did. */
+    stopped?: string;
     violations: { groups: number; nodes: number; byImpact: Record<Impact, number> };
     needsReview: { groups: number; nodes: number };
   };

@@ -65,6 +65,22 @@ The URL's path bounds the crawl. daredevil starts at the URL and follows links b
 
 Fragments (`#…`) and query strings are ignored for de-duplication; use `--keep-query` to keep query strings. Non-HTML resources (PDF, images…) are skipped. Redirects of the start URL (e.g. `mysite.com` to `www.mysite.com`) are followed before the scope is fixed.
 
+### Pages behind a login
+
+To audit a customer area or a back office, save a login session once, then audit with it:
+
+```bash
+npm run -s login -- https://espace-client.orange.fr/
+npm run -s audit -- https://espace-client.orange.fr/ --auth .auth/espace-client.orange.fr.json
+```
+
+- **You log in yourself**, in a visible browser window: captcha, SMS code and second factors work as usual, and daredevil never sees your credentials. The session is saved once you are back on the site after logging in (or press Enter, or close the window). In Claude Code, type `! npm run -s login -- <url>`.
+- The session is the Playwright storage state (cookies and localStorage), saved to `.auth/<host>.json` with mode 0600. `.auth/` is git-ignored. Anyone with this file can use the account until the session expires: delete it when you are done.
+- **Logout links are never followed** (`logout`, `sign-out`, `déconnexion`…). Use `--exclude '<regex>'` for other links with side effects (cancel, delete, unsubscribe).
+- **A lost session is detected.** A page that lands on a login page (another origin, or a `/login`-like path) is marked `auth-lost`, not scored, and the crawl stops after 2 in a row. Pass `--logged-in-check '<css>'` (for example the account menu) for a stricter check. Session cookies the site rotates during the crawl carry over to the next pages.
+- **Personal data.** Account pages show names, addresses and contract numbers, which end up in HTML snippets. Image screenshots are therefore off by default (`--images` turns them on), and the reports carry a "Logged-in audit" warning. Review them before sharing.
+- Logged-in runs are stored under `reports/<slug>_auth/`, so they are never compared with logged-out runs of the same URL.
+
 ---
 
 ## What you get
@@ -358,7 +374,16 @@ npm run -s audit -- <url> [options]
   --consent-selector <s> CSS selector of the consent 'reject' button, if not auto-detected
   --skip-keyboard        Skip the keyboard probe
   --skip-images          Skip image screenshots for alt-text review
+  --exclude <regex>      Never visit URLs matching this (case-insensitive; repeatable)
+  --auth <file>          Audit logged in, with a session saved by 'login'
+  --logged-in-check <s>  CSS selector visible only when logged in (stricter session check)
+  --images               With --auth: capture image screenshots anyway
   --out <dir>            Reports root (default ./reports)
+
+npm run -s login -- <url> [options]  open a browser, log in by hand, save the session
+  --out <file>           Session file (default .auth/<host>.json)
+  --logged-in-check <s>  Save as soon as this selector is visible
+  --wait <minutes>       Give up after this long (default 10)
 
 npm run -s diff -- <before/report.json> <after/report.json>
 npm run -s render -- <reportDir>     rebuild report.md / report.html with the agent's files
@@ -370,7 +395,8 @@ npm run -s render -- <reportDir>     rebuild report.md / report.html with the ag
 
 - Automated rules detect only part of WCAG failures: Deque estimates about 57% by volume, and fewer by number of success criteria. A score of 100 means **no detectable violation**, not WCAG conformance.
 - The keyboard probe and the alt-text review are heuristics or AI judgement. They are reported with confidence levels and never scored.
-- Not covered yet: screen-reader behaviour, authenticated pages, multi-step flows (checkout, forms), mobile viewports in a single run, PDFs.
+- Logged-in audits reuse a session you create by hand; scripted logins (for CI) are not supported yet. Pages reached only by clicking (no `<a href>`) are not crawled.
+- Not covered yet: screen-reader behaviour, multi-step flows (checkout, forms), mobile viewports in a single run, PDFs.
 
 A conformance claim still needs manual testing with assistive technologies.
 
@@ -390,6 +416,7 @@ src/group.ts     root-cause signatures and grouping
 src/score.ts     scoring model (bump SCORING_VERSION on any change)
 src/report.ts    report.json assembly, diff, markdown rendering
 src/html.ts      HTML report
+src/auth.ts      login session capture and loading, login-page and logout-link detection
 src/consent.ts   cookie-dialog dismissal
 src/brand.ts     logo embedding (assets/logo.svg)
 .claude/agents/daredevil.md   the Claude Code agent

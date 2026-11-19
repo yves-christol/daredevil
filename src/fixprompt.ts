@@ -254,7 +254,10 @@ export function fixPromptMarkdown(r: Report, opts: FixPromptOptions = {}): strin
   const s = r.summary;
   const scope = `${r.config.scope.origin}${r.config.scope.pathPrefix || '/'}`;
   const reportJson = opts.reportDir ? `${opts.reportDir}/report.json` : 'report.json';
-  const reaudit = `npm run -s audit -- <url of the site with your changes>${r.config.scope.pathPrefix} --same-pages ${reportJson}`;
+  const authArgs = r.config.auth
+    ? ` --auth <session file for that site>${r.config.auth.loggedInCheck ? ` --logged-in-check '${r.config.auth.loggedInCheck.replace(/'/g, "'\\''")}'` : ''}`
+    : '';
+  const reaudit = `npm run -s audit -- <url of the site with your changes>${r.config.scope.pathPrefix} --same-pages ${reportJson}${authArgs}`;
   const out: string[] = [];
 
   out.push(`# Fix the accessibility defects found on ${scope}`, '');
@@ -270,6 +273,12 @@ export function fixPromptMarkdown(r: Report, opts: FixPromptOptions = {}): strin
     `- Generated ${r.generatedAt} by daredevil ${r.tool.version} (axe-core ${r.tool.axeVersion}, scoring v${r.tool.scoringVersion})`,
     `- Full data (all elements, pages and examples): \`${reportJson}\`${opts.findings?.length ? `, AI-assisted findings in \`${opts.reportDir ? opts.reportDir + '/' : ''}assisted.json\`` : ''}`,
     '',
+    ...(r.config.auth
+      ? [
+          '- These pages require a login. To re-audit, a person must first save a session for the target site from the daredevil checkout with `npm run -s login -- <url>` (they log in by hand; never ask for or handle their credentials), then pass the session file with `--auth`.',
+          '',
+        ]
+      : []),
     'The selectors and HTML below come from the **rendered** pages. Map each one back to the component, template, stylesheet or content that produces it before editing.',
     '',
   );

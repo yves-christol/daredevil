@@ -306,7 +306,9 @@ ${faviconDataUri() ? `<link rel="icon" href="${faviconDataUri()}">` : ''}
 <section class="hero" aria-labelledby="title">
   <div class="hero-text">
     <h1 id="title">${esc(scopeLabel).replace(/\//g, '/<wbr>')}</h1>
-    <p class="muted">${dateLabel} · ${s.pagesScanned} page${s.pagesScanned === 1 ? '' : 's'} scanned${s.pagesFailed ? ` · <strong>${s.pagesFailed} failed</strong>` : ''}${consentPages ? ` · cookie dialog dismissed on ${consentPages} page${consentPages === 1 ? '' : 's'}` : ''}</p>
+    <p class="muted">${dateLabel} · ${s.pagesScanned} page${s.pagesScanned === 1 ? '' : 's'} scanned${s.pagesFailed ? ` · <strong>${s.pagesFailed} failed</strong>` : ''}${s.pagesAuthLost ? ` · <strong>${s.pagesAuthLost} lost the session</strong>` : ''}${consentPages ? ` · cookie dialog dismissed on ${consentPages} page${consentPages === 1 ? '' : 's'}` : ''}${r.config.auth ? ' · logged-in audit' : ''}</p>
+    ${r.config.auth ? '<p class="warn" role="note">⚠ Logged-in audit: pages were scanned with a saved login session. Snippets and screenshots may contain personal data from the account. Review before sharing.</p>' : ''}
+    ${s.stopped ? `<p class="warn" role="note">⚠ Crawl stopped early: ${esc(s.stopped)}</p>` : ''}
     <ul class="stats">
       <li><strong>${fmt(s.violations.nodes)}</strong><span>failing elements</span></li>
       <li><strong>${s.violations.groups}</strong><span>root causes</span></li>

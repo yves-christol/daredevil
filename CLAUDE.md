@@ -5,7 +5,8 @@ path, scores it and writes reports. The `daredevil` subagent (`.claude/agents/da
 runs the CLI and adds AI-assisted review, a human summary and a fix handoff.
 
 ## Commands
-- `npm run -s audit -- <url> [--max-pages N] [--same-pages prev/report.json]`: writes `reports/<site-slug>/<timestamp>/`
+- `npm run -s audit -- <url> [--max-pages N] [--same-pages prev/report.json] [--auth .auth/<host>.json]`: writes `reports/<site-slug>/<timestamp>/` (`<site-slug>_auth` when logged in)
+- `npm run -s login -- <url>`: headed browser, the user logs in by hand, saves the Playwright storage state to `.auth/<host>.json` (0600, git-ignored)
 - `npm run -s diff -- before.json after.json`
 - `npm run -s render -- <reportDir>`: rebuilds `report.md` / `report.html` / `fix-prompt.md`, including the agent's files if present
 - `npm test` (unit tests + an e2e test against `test/fixtures/site`), `npm run typecheck`
@@ -20,6 +21,7 @@ runs the CLI and adds AI-assisted review, a human summary and a fix handoff.
 - `src/report.ts`: report.json assembly, diff, markdown
 - `src/fixprompt.ts`: `fix-prompt.md`, the AI fix prompt: findings bucketed by fix category (rule table, then WCAG fallback), one merge request per category
 - `src/html.ts`: self-contained HTML report (escapes all site-derived content; must itself stay accessible)
+- `src/auth.ts`: session capture (`login`), session loading, login-page and logout-link detection
 - `src/consent.ts`: cookie-dialog dismissal ("reject", never "accept")
 - `src/brand.ts`: embeds `assets/logo.svg` (inline header logo + favicon)
 - `docs/ux-guidelines.md`: brand and UX guidelines; its "Implementation notes" list the verified contrast values to use
@@ -35,4 +37,5 @@ Subagents cannot write report files, so the agent returns its deliverables as te
 - Any change to the scoring formula or constants: bump `SCORING_VERSION` in `src/score.ts`. Changing grouping signatures changes group ids: note it, since diffs across that change show false "fixed/new".
 - Code passed to `page.evaluate` must not contain named functions (`const f = () => …`): tsx/esbuild injects a `__name` helper that does not exist in the browser.
 - The score is computed only by code; the agent never adjusts it.
+- Logged-in audits: never handle credentials (the user logs in in the headed window), never put session-file content in a report or a message, never follow logout links (`LOGOUT_URL`), and keep image screenshots off by default (personal data).
 - Keep dependency versions pinned (exact): axe-core upgrades change rules and therefore scores.

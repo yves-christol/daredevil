@@ -1,11 +1,12 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp } from 'node:fs/promises';
+import { mkdtemp, readFile, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { serveFixtures } from './helpers.ts';
 import { runAudit } from '../src/audit.ts';
-import { buildReport } from '../src/report.ts';
+import { buildReport, diffReports, reportMarkdown } from '../src/report.ts';
+import { LOGOUT_URL, captureSession } from '../src/auth.ts';
 import { renderHtml } from '../src/html.ts';
 import { buildFixPlan, fixPromptMarkdown } from '../src/fixprompt.ts';
 import { scopeFromUrl } from '../src/crawl.ts';
@@ -65,6 +66,88 @@ test('audits the /shop subtree of the fixture site', { timeout: 120_000 }, async
     const withPrompt = renderHtml(report, { fixPrompt: { markdown, plan } });
     assert.match(withPrompt, /id="fix-prompt"/);
     assert.ok(!withPrompt.includes('<button class="icon-btn"></button>'), 'fix prompt must be escaped too');
+  } finally {
+    server.close();
+  }
+});
+
+// ------------------------------------------------------------------ authenticated audits
+
+const baseConfig = (startUrl: string): AuditConfig => ({
+  startUrl, scope: scopeFromUrl(startUrl), maxPages: 10, concurrency: 2,
+  viewport: { width: 1280, height: 800 }, waitMs: 0, timeoutMs: 15000, keepQuery: false,
+  tags: ['wcag2a', 'wcag2aa'], keyboardProbe: false, imageCapture: false, dismissConsent: false,
+});
+
+test('login saves a session, and a logged-in audit crawls the account without logging out', { timeout: 120_000 }, async () => {
+  const { url, server } = await serveFixtures();
+  try {
+    const dir = await mkdtemp(join(tmpdir(), 'dd-auth-'));
+    const stateFile = join(dir, 'auth', 'session.json');
+    const saved = await captureSession({
+      url: `${url}/account`,
+      out: stateFile,
+      headless: true,
+      timeoutMs: 30_000,
+      interact: async (page) => {
+        await page.waitForURL(/\/login/);
+        await page.fill('#email', 'jane@example.test');
+        await page.fill('#pw', 'not-a-real-password');
+        await page.click('button[type=submit]');
+      },
+    });
+    assert.equal(saved.reason, 'back on the site after logging in');
+    assert.match(saved.finalUrl, /\/account$/);
+    assert.equal((await stat(stateFile)).mode & 0o777, 0o600);
+    const state = JSON.parse(await readFile(stateFile, 'utf8'));
+    assert.ok(state.cookies.some((c: { name: string }) => c.name === 'dd_session'));
+    assert.ok(!JSON.stringify(state).includes('not-a-real-password'), 'credentials must never be saved');
+
+    const startUrl = `${url}/account`;
+    const config: AuditConfig = {
+      ...baseConfig(startUrl),
+      exclude: [LOGOUT_URL.source],
+      auth: { stateFile, loggedInCheck: '#account-menu' },
+    };
+    const run = await runAudit(config, dir, () => {});
+    assert.deepEqual(run.pages.map((p) => [p.path, p.status]), [['/account', 'ok'], ['/account/invoices.html', 'ok']]);
+    assert.equal(run.stopped, undefined);
+
+    const report = buildReport(config, run.pages, { version: 'test', axeVersion: run.axeVersion, browser: run.browser });
+    assert.equal(report.summary.pagesAuthLost, 0);
+    assert.ok(report.issues.some((g) => g.ruleId === 'image-alt'));
+    assert.ok(!JSON.stringify(report).includes('dd_session'), 'session content must not leak into the report');
+    assert.match(renderHtml(report), /Logged-in audit/);
+    assert.match(reportMarkdown(report), /Logged-in audit/);
+    assert.match(fixPromptMarkdown(report), /--auth <session file for that site> --logged-in-check '#account-menu'/);
+
+    // the same scope audited logged out is not comparable
+    const anon = buildReport(baseConfig(startUrl), run.pages, { version: 'test', axeVersion: run.axeVersion, browser: run.browser });
+    const d = diffReports(anon, report);
+    assert.equal(d.comparable, false);
+    assert.ok(d.warnings.some((w) => /login state differs/.test(w)));
+  } finally {
+    server.close();
+  }
+});
+
+test('an expired session is reported as auth-lost and stops the crawl', { timeout: 60_000 }, async () => {
+  const { url, server } = await serveFixtures();
+  try {
+    const dir = await mkdtemp(join(tmpdir(), 'dd-auth-'));
+    const stateFile = join(dir, 'empty.json');
+    await writeFile(stateFile, JSON.stringify({ cookies: [], origins: [] }));
+    const startUrl = `${url}/account`;
+    const config: AuditConfig = { ...baseConfig(startUrl), exclude: [LOGOUT_URL.source], auth: { stateFile } };
+    const run = await runAudit(config, dir, () => {});
+    assert.equal(run.pages.length, 1);
+    assert.equal(run.pages[0].status, 'auth-lost');
+    assert.match(run.pages[0].error ?? '', /login page .*\/login/);
+    assert.match(run.stopped ?? '', /session lost/);
+    const report = buildReport(config, run.pages, { version: 'test', axeVersion: run.axeVersion, browser: run.browser, stopped: run.stopped });
+    assert.equal(report.summary.pagesScanned, 0);
+    assert.equal(report.summary.pagesAuthLost, 1);
+    assert.match(renderHtml(report), /Crawl stopped early/);
   } finally {
     server.close();
   }

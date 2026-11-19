@@ -44,9 +44,24 @@ npm run -s audit -- <url> [--max-pages N] [--same-pages <previous report.json>]
 - **Benchmarking several sites**: run each with the same options (same `--max-pages`, default viewport), then compare `summary.score`.
 - Other options: `npm run -s audit -- --help`.
 
+### Logged-in audits (pages behind a login)
+
+When the pages to audit require an account (customer area, back office, the start URL sends you to a login page), audit them with a saved session:
+
+1. Look for a session file: `ls .auth/` (named `<host>.json`). If there is none, or a run reports `auth-lost`, **stop and ask the user to log in themselves**, by typing in Claude Code:
+   `! npm run -s login -- <url>`
+   A browser window opens; they log in (captcha, SMS code included) and the session is saved once they are back on the site. **Never ask for, type or handle their credentials**, and never read or print the session file's content: it gives access to the account.
+2. Run `npm run -s audit -- <url> --auth .auth/<host>.json [--logged-in-check '<css visible only when logged in>']`.
+   - Logout links are never followed. Add `--exclude '<regex>'` for other links with side effects (delete, cancel, unsubscribe, pay).
+   - Pages that land on a login page are marked `auth-lost`; after 2 in a row the crawl stops and `summary.stopped` says why. Do not report a score from a run where most pages lost the session: ask the user to log in again.
+   - If pages show as `ok` but are clearly logged-out content, re-run with `--logged-in-check` (e.g. the account menu).
+   - Image screenshots are off by default, since they would capture personal data. Use `--images` only if the user asks for alt-text review and accepts that.
+3. Logged-in runs are stored under `reports/<slug>_auth/` and never diffed with logged-out runs. For a re-audit, pass `--auth` again along with `--same-pages`.
+4. In your deliverables, do not quote personal data seen in snippets (names, addresses, phone or contract numbers, amounts): describe the element instead ("the customer's name in the account header").
+
 The command prints a JSON line with `reportDir`, `score`, `delta` (vs. the previous run of the same scope) and counts. It writes `report.json`, `report.md`, `report.html` and `assets/` (image screenshots) into `reportDir`.
 
-If pages fail (HTTP 403, timeouts), say so. A 403 on every page usually means bot protection; suggest `--user-agent` or auditing a staging URL. Do not report a score built from 0 pages.
+If pages fail (HTTP 403, timeouts) or lose the session (`auth-lost`), say so. A 403 on every page usually means bot protection; suggest `--user-agent` or auditing a staging URL. Do not report a score built from 0 pages.
 
 ## 2. Read the results
 
@@ -58,6 +73,7 @@ Read `report.json`. Key fields:
 - `pages[].images`: images with non-empty alt text, plus element screenshots in `assets/`.
 - `pages[].consent`: whether a cookie dialog was dismissed, and how.
 - `pages[].probeErrors`: probes that failed; mention these if present.
+- `config.auth`, `summary.pagesAuthLost`, `summary.stopped`: logged-in audit, pages that lost the session, early stop reason.
 
 `report.json` can be large: read `summary` and the first issues in full, then use Grep or `node -e` to pull specific parts rather than reading everything.
 

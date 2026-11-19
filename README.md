@@ -43,13 +43,14 @@ npm run -s audit -- https://www.mysite.com/shop --max-pages 25
 ```json
 {
   "reportDir": "reports/www.w3.org_WAI_demos_bad_before/20261118-195027",
-  "score": 45.6,
+  "score": 29.6,
   "delta": 0,
   "comparableWithPrevious": true,
   "pagesScanned": 8,
   "pagesFailed": 0,
   "issueGroups": 16,
-  "violationNodes": 439
+  "violationNodes": 439,
+  "fixPrompt": "reports/www.w3.org_WAI_demos_bad_before/20261118-195027/fix-prompt.md"
 }
 ```
 
@@ -90,7 +91,7 @@ Each run writes to `reports/<site-and-path>/<timestamp>/`:
 | File | Audience | Produced by |
 |---|---|---|
 | `report.json` | machines and AIs: the full structured result | engine |
-| `report.html` | humans: a designed, self-contained report (score panel, filterable issues, AI findings, image gallery…), re-rendered with the agent's files | engine (`render`) |
+| `report.html` | humans: a designed, self-contained report (score panel, filterable issues, a plain-language "?" explanation per defect, AI findings, image gallery…), re-rendered with the agent's files | engine (`render`) |
 | `report.md` | humans who want plain text: score, prioritised issues, evidence | engine |
 | `fix-prompt.md` | an AI coding agent in the site's repo: a ready-to-paste prompt, one merge request per category (also in `report.html`, with a copy button) | engine (`audit` / `render`) |
 | `assets/*.png` | element screenshots of images, for alt-text review | engine |
@@ -110,7 +111,11 @@ Each run writes to `reports/<site-and-path>/<timestamp>/`:
 
 Its design follows the project's [UX guidelines](docs/ux-guidelines.md): the logo's charcoal canvas and yellow corner-bracket focus rings, outlined status badges that pair every colour with an icon and a label, and offset "layer" cards for evidence. It has a light theme too, following the reader's OS setting, with a toggle.
 
-It contains the score panel and breakdown, the agent's summary, the change since the last run, issues by priority (filterable by impact, each expandable to locations and evidence), the AI-assisted findings with their confidence, the undecided items, the keyboard probe, a gallery of image screenshots next to their alt text, and the page list.
+It contains the score panel and breakdown, the agent's summary, the change since the last run, issues by priority (filterable by impact, each expandable to locations and evidence), the AI-assisted findings with their confidence, the fix prompt, the undecided items, the keyboard probe, a gallery of image screenshots next to their alt text, and the page list.
+
+**A teaching tool, too.** Every defect has a **?** button that opens a plain-language explanation written for developers new to accessibility: what the defect is, what is at stake for real people (what a screen reader announces, what a keyboard user cannot do), who is affected, an everyday analogy, how to fix it with before/after code, and the WCAG criterion in plain words. The explanations come from a library with one entry for each of the 97 axe rules daredevil runs ([`assets/explanations.json`](assets/explanations.json)), written by the daredevil agent; a test fails if an axe-core upgrade adds a rule without one. The buttons also appear next to undecided items and in the change-since-last-run lists.
+
+![HTML report: plain-language explanation of a defect](docs/report-html-explain.png)
 
 
 The samples below are real output from auditing W3C's [Before and After Demonstration](https://www.w3.org/WAI/demos/bad/), a site built to be inaccessible on purpose, with a repaired "after" version (8 pages each).
@@ -118,18 +123,20 @@ The samples below are real output from auditing W3C's [Before and After Demonstr
 ### Score (`report.md`)
 
 ```markdown
-## Score: 45.6 / 100
+## Score: 29.6 / 100
 
 | Dimension | Score |
 |---|---:|
-| **Overall (WCAG A+AA)** | **45.6** |
-| Level A | 53.2 |
-| Level AA | 84.3 |
-| Perceivable | 63.3 |
-| Operable | 79.5 |
-| Understandable | 96.3 |
-| Robust | 88.1 |
-| Best practices (not in overall) | 88.7 |
+| **Overall (WCAG A+AA)** | **29.6** |
+| Level A | 36.7 |
+| Level AA | 80.6 |
+| Perceivable | 49.8 |
+| Operable | 75.4 |
+| Understandable | 95.1 |
+| Robust | 82.9 |
+| Best practices (not in overall) | 87.4 |
+
+Scores are the mean of the 5 lowest-scoring of 8 pages (mean over all pages: 45.6).
 
 Violations: **439 nodes in 16 root-cause groups** (critical 201, serious 71, moderate 166, minor 1).
 Needs review: 25 nodes in 7 groups.
@@ -141,13 +148,15 @@ Needs review: 25 nodes in 7 groups.
 
 | # | Gain | Impact | Rule | WCAG | Root cause | Nodes | Pages |
 |---:|---:|---|---|---|---|---:|---:|
-| 1 | +18.63 | critical | image-alt | 1.1.1 (A) | `<img>` | 183 | 6 |
-| 2 | +4.08 | serious | link-name | 2.4.4, 4.1.2 (A) | `<a>` | 30 | 6 |
-| 3 | +2.74 | critical | select-name | 4.1.2 (A) | `<select>` | 7 | 6 |
-| 4 | +2.38 | serious | target-size | 2.5.8 (AA) | `<a.page>` | 4 | 2 |
-| 5 | +2.12 | serious | target-size | 2.5.8 (AA) | `<a.report>` | 12 | 6 |
-| 6 | +1.25 | serious | color-contrast | 1.4.3 (AA) | `fg #41545d on bg #a9b8bf, 9.8pt (13px) bold` | 6 | 3 |
-| 7 | +1.18 | serious | html-has-lang | 3.1.1 (A) | `page structure` | 6 | 6 |
+| 1 | +23.55 | critical | image-alt | 1.1.1 (A) | `<img>` | 183 | 6 |
+| 2 | +5.38 | serious | link-name | 2.4.4, 4.1.2 (A) | `<a>` | 30 | 6 |
+| 3 | +3.63 | critical | select-name | 4.1.2 (A) | `<select>` | 7 | 6 |
+| 4 | +2.65 | serious | target-size | 2.5.8 (AA) | `<a.report>` | 12 | 6 |
+| 5 | +1.64 | serious | color-contrast | 1.4.3 (AA) | `fg #41545d on bg #a9b8bf, 9.8pt (13px) bold` | 6 | 3 |
+| 6 | +1.52 | serious | html-has-lang | 3.1.1 (A) | `page structure` | 6 | 6 |
+| 7 | +0.65 | serious | color-contrast | 1.4.3 (AA) | `fg #41545d on bg #a9b8bf, 9.0pt (12px) bold` | 6 | 1 |
+
+Gains are measured on the headline score, so a group found only on the site's better pages can show a gain of 0 (here `target-size` on `<a.page>`, on the two report pages): it is still a defect to fix.
 
 Each group then gets a detail section with selector patterns, affected pages, HTML evidence and axe's failure summary:
 
@@ -205,7 +214,7 @@ Every group carries everything a fixing agent needs. Its `id` is stable across r
       "data": { "fgColor": "#41545d", "bgColor": "#a9b8bf", "contrastRatio": 3.88, "expectedContrastRatio": "4.5:1", "fontSize": "9.8pt (13px)", "fontWeight": "bold" }
     }
   ],
-  "estimatedScoreGain": 1.25
+  "estimatedScoreGain": 1.64
 }
 ```
 
@@ -224,20 +233,20 @@ pages[]      per page: score, raw violations, incomplete, passes, keyboard probe
 Comparing W3C's inaccessible demo with its repaired version:
 
 ```markdown
-**Overall: 45.6 → 89.5 (+43.9)**
+**Overall: 29.6 → 88.9 (+59.3)**
 
 > ⚠️ page sets differ (8 only in before, 8 only in after); re-run with --same-pages for a strict comparison
 
 | Score | Before | After | Δ |
 |---|---:|---:|---:|
-| overall | 45.6 | 89.5 | +43.9 |
-| level A | 53.2 | 100 | +46.8 |
-| level AA | 84.3 | 89.5 | +5.2 |
-| perceivable | 63.3 | 100 | +36.7 |
-| operable | 79.5 | 89.5 | +10 |
-| understandable | 96.3 | 100 | +3.7 |
-| robust | 88.1 | 100 | +11.9 |
-| best-practice | 88.7 | 87.6 | -1.1 |
+| overall | 29.6 | 88.9 | +59.3 |
+| level A | 36.7 | 100 | +63.3 |
+| level AA | 80.6 | 88.9 | +8.3 |
+| perceivable | 49.8 | 100 | +50.2 |
+| operable | 75.4 | 88.9 | +13.5 |
+| understandable | 95.1 | 100 | +4.9 |
+| robust | 82.9 | 100 | +17.1 |
+| best-practice | 87.4 | 86.7 | -0.7 |
 
 Issue groups: **10 fixed**, **1 new**, 1 changed in size.
 
@@ -414,8 +423,11 @@ src/audit.ts     browser, breadth-first crawl, axe scan, conversion of axe resul
 src/probes.ts    keyboard probe, image inventory and screenshots
 src/group.ts     root-cause signatures and grouping
 src/score.ts     scoring model (bump SCORING_VERSION on any change)
+src/wcag.ts      audited axe tags, WCAG criteria, levels and principles from axe tags
 src/report.ts    report.json assembly, diff, markdown rendering
+src/fixprompt.ts fix-prompt.md: fix categories, one merge request per category
 src/html.ts      HTML report
+src/explain.ts   loads assets/explanations.json, the "?" explanation per axe rule
 src/auth.ts      login session capture and loading, login-page and logout-link detection
 src/consent.ts   cookie-dialog dismissal
 src/brand.ts     logo embedding (assets/logo.svg)

@@ -1,5 +1,8 @@
 import type { Level, Principle } from './types.ts';
 
+/** axe tags audited: WCAG 2.0, 2.1 and 2.2, levels A and AA (best practice is added unless skipped). */
+export const WCAG_TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'];
+
 const PRINCIPLES: Principle[] = ['perceivable', 'operable', 'understandable', 'robust'];
 
 /** Extract WCAG success criteria from axe tags: "wcag1412" -> "1.4.12". */

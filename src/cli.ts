@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { basename, dirname, join, resolve } from 'node:path';
 import type { AuditConfig, Report } from './types.ts';
 import { scopeFromUrl } from './crawl.ts';
+import { WCAG_TAGS } from './wcag.ts';
 import { runAudit } from './audit.ts';
 import { buildReport, diffMarkdown, diffReports, reportMarkdown } from './report.ts';
 import { renderHtml, type HtmlExtras } from './html.ts';
@@ -14,7 +15,6 @@ import { LOGOUT_URL, captureSession, defaultStateFile, loadAuthState, sessionLif
 import type { AssistedFinding } from './types.ts';
 
 const VERSION = '0.1.0';
-const WCAG_TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'];
 
 const USAGE = `daredevil — accessibility audit (axe-core + Playwright)
 

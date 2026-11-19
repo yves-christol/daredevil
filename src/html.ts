@@ -4,6 +4,7 @@ import type { ReportDiff } from './report.ts';
 import { MAX_TABS as MAX_TABS_LABEL } from './probes.ts';
 import { faviconDataUri, logoInline } from './brand.ts';
 import type { FixCategory } from './fixprompt.ts';
+import { explanationFor } from './explain.ts';
 
 export interface HtmlExtras {
   diff?: ReportDiff;
@@ -63,14 +64,16 @@ function meter(label: string, score: number, note = ''): string {
 </div>`;
 }
 
+/** Inline Markdown (code, bold, emphasis, links) on escaped text. */
+const inline = (s: string) =>
+  esc(s)
+    .replace(/`([^`]+)`/g, '<code>$1</code>')
+    .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+    .replace(/(^|[\s(])\*([^*\s][^*]*)\*/g, '$1<em>$2</em>')
+    .replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g, '<a href="$2">$1</a>');
+
 /** Minimal Markdown → HTML for agent-written summaries: headings, lists, tables, emphasis, code, links. */
 export function markdownToHtml(md: string): string {
-  const inline = (s: string) =>
-    esc(s)
-      .replace(/`([^`]+)`/g, '<code>$1</code>')
-      .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
-      .replace(/(^|[\s(])\*([^*\s][^*]*)\*/g, '$1<em>$2</em>')
-      .replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g, '<a href="$2">$1</a>');
   const lines = md.replace(/\r/g, '').split('\n');
   const out: string[] = [];
   let i = 0;
@@ -138,12 +141,53 @@ export function markdownToHtml(md: string): string {
   return out.join('\n');
 }
 
+// ------------------------------------------------------------------ explanations
+// "?" buttons open a modal <dialog> with the plain-language explanation of a rule.
+// Buttons stay hidden until the script runs (no dialog support, no button).
+
+const explainId = (ruleId: string) => `explain-${ruleId.replace(/[^\w-]/g, '_')}`;
+
+function explainButton(ruleId: string, inlineStyle = false): string {
+  const e = explanationFor(ruleId);
+  if (!e) return '';
+  return `<button type="button" class="explain-btn${inlineStyle ? ' inline' : ''}" data-explain="${explainId(ruleId)}" aria-haspopup="dialog" hidden><span class="visually-hidden">Explain “${esc(e.title)}”</span><span aria-hidden="true">?</span></button>`;
+}
+
+function explainDialog(ruleId: string): string {
+  const e = explanationFor(ruleId);
+  if (!e) return '';
+  const id = explainId(ruleId);
+  const list = (a: unknown) => (Array.isArray(a) ? a.filter((x): x is string => typeof x === 'string') : []);
+  const affects = list(e.affects);
+  const fix = list(e.fix);
+  return `<dialog class="explain" id="${id}" aria-labelledby="${id}-h">
+<div class="explain-inner">
+  <div class="explain-head">
+    <div><p class="explain-kicker">Accessibility 101 · <code>${esc(ruleId)}</code></p>
+    <h2 id="${id}-h">${esc(e.title)}</h2></div>
+    <button type="button" class="explain-close">Close</button>
+  </div>
+  <p class="explain-short">${inline(e.inShort)}</p>
+  ${e.atStake ? `<h3>What is at stake</h3>\n  <p>${inline(e.atStake)}</p>` : ''}
+  ${affects.length ? `<h3>Who is affected</h3><ul class="chips affects">${affects.map((a) => `<li>${esc(a)}</li>`).join('')}</ul>` : ''}
+  ${e.analogy ? `<p class="explain-analogy"><strong>Think of it this way.</strong> ${inline(e.analogy)}</p>` : ''}
+  ${fix.length ? `<h3>How to fix it</h3><ol>${fix.map((f) => `<li>${inline(f)}</li>`).join('')}</ol>` : ''}
+  ${e.bad || e.good ? `<div class="explain-code">
+    ${e.bad ? `<figure><figcaption><span class="ko-icon" aria-hidden="true">✕</span> Before</figcaption><pre><code>${esc(e.bad)}</code></pre></figure>` : ''}
+    ${e.good ? `<figure><figcaption><span class="ok-icon" aria-hidden="true">✓</span> After</figcaption><pre><code>${esc(e.good)}</code></pre></figure>` : ''}
+  </div>` : ''}
+  ${e.wcag ? `<p class="explain-wcag"><strong>The rule behind it.</strong> ${inline(e.wcag)}</p>` : ''}
+</div>
+</dialog>`;
+}
+
 // ------------------------------------------------------------------ sections
 
 function issueCard(g: IssueGroup, rank: number, maxGain: number): string {
   const gainPct = maxGain > 0 ? Math.max(2, (g.estimatedScoreGain / maxGain) * 100) : 0;
   const ex = g.examples.slice(0, 3);
-  return `<li class="issue" data-impact="${esc(g.impact ?? 'moderate')}">
+  const help = explainButton(g.ruleId);
+  return `<li class="issue${help ? ' has-explain' : ''}" data-impact="${esc(g.impact ?? 'moderate')}">
 <details>
   <summary>
     <span class="rank" aria-hidden="true">${rank}</span>
@@ -175,6 +219,7 @@ function issueCard(g: IssueGroup, rank: number, maxGain: number): string {
       .join('')}
   </div>
 </details>
+${help}
 </li>`;
 }
 
@@ -228,9 +273,9 @@ function diffSection(d: ReportDiff): string {
     <tbody>${d.breakdown.map((r) => `<tr><th scope="row">${esc(r.key)}</th><td class="num">${r.before}</td><td class="num">${r.after}</td><td class="num ${r.delta > 0 ? 'up' : r.delta < 0 ? 'down' : ''}">${signed(r.delta)}</td></tr>`).join('')}</tbody>
   </table></div>
   <div class="cols3">
-    <div><h3>Fixed <span class="count">${d.fixed.length}</span></h3><ul class="plain">${d.fixed.map((g) => `<li><span class="ok-icon" aria-hidden="true">✓</span> <code>${esc(g.ruleId)}</code> ${esc(g.signature)} <span class="muted">(${g.occurrences})</span></li>`).join('') || '<li class="muted">none</li>'}</ul></div>
-    <div><h3>New <span class="count">${d.introduced.length}</span></h3><ul class="plain">${d.introduced.map((g) => `<li><span class="ko-icon" aria-hidden="true">✕</span> <code>${esc(g.ruleId)}</code> ${esc(g.signature)} <span class="muted">(${g.occurrences})</span></li>`).join('') || '<li class="muted">none</li>'}</ul></div>
-    <div><h3>Changed <span class="count">${d.changed.length}</span></h3><ul class="plain">${d.changed.map((c) => `<li><code>${esc(c.group.ruleId)}</code> ${esc(c.group.signature)} <span class="muted">${c.before} → ${c.after}</span></li>`).join('') || '<li class="muted">none</li>'}</ul></div>
+    <div><h3>Fixed <span class="count">${d.fixed.length}</span></h3><ul class="plain">${d.fixed.map((g) => `<li><span class="ok-icon" aria-hidden="true">✓</span> <code>${esc(g.ruleId)}</code>${explainButton(g.ruleId, true)} ${esc(g.signature)} <span class="muted">(${g.occurrences})</span></li>`).join('') || '<li class="muted">none</li>'}</ul></div>
+    <div><h3>New <span class="count">${d.introduced.length}</span></h3><ul class="plain">${d.introduced.map((g) => `<li><span class="ko-icon" aria-hidden="true">✕</span> <code>${esc(g.ruleId)}</code>${explainButton(g.ruleId, true)} ${esc(g.signature)} <span class="muted">(${g.occurrences})</span></li>`).join('') || '<li class="muted">none</li>'}</ul></div>
+    <div><h3>Changed <span class="count">${d.changed.length}</span></h3><ul class="plain">${d.changed.map((c) => `<li><code>${esc(c.group.ruleId)}</code>${explainButton(c.group.ruleId, true)} ${esc(c.group.signature)} <span class="muted">${c.before} → ${c.after}</span></li>`).join('') || '<li class="muted">none</li>'}</ul></div>
   </div>
 </section>`;
 }
@@ -281,6 +326,13 @@ export function renderHtml(r: Report, extras: HtmlExtras = {}): string {
   ].filter(Boolean) as [string, string][];
 
   const impacts: Impact[] = ['critical', 'serious', 'moderate', 'minor'];
+  const explainedRules = [
+    ...new Set([
+      ...r.issues.map((g) => g.ruleId),
+      ...r.needsReview.map((g) => g.ruleId),
+      ...(extras.diff ? [...extras.diff.fixed, ...extras.diff.introduced, ...extras.diff.changed.map((c) => c.group)].map((g) => g.ruleId) : []),
+    ]),
+  ].filter((id) => explanationFor(id));
 
   return `<!doctype html>
 <html lang="en">
@@ -343,7 +395,7 @@ ${extras.diff ? diffSection(extras.diff) : ''}
 
 <section id="issues" aria-labelledby="issues-h">
   <h2 id="issues-h">Issues by priority <span class="count">${r.issues.length}</span></h2>
-  <p class="lede">Each entry is one likely root cause, ranked by the score points gained if it is fixed. Open an entry for locations and evidence.</p>
+  <p class="lede">Each entry is one likely root cause, ranked by the score points gained if it is fixed. Open an entry for locations and evidence.${explainedRules.length ? ' <span class="js-only" hidden>New to accessibility? Select <span class="explain-sample" aria-hidden="true">?</span> on an entry for a plain-language explanation of what is at stake and how to fix it.</span>' : ''}</p>
   <div class="filters" role="group" aria-label="Filter issues by impact">
     <button type="button" aria-pressed="true" data-filter="all">All</button>
     ${impacts.map((i) => `<button type="button" aria-pressed="false" data-filter="${i}">${i[0].toUpperCase() + i.slice(1)} <span class="muted">${r.issues.filter((g) => (g.impact ?? 'moderate') === i).length}</span></button>`).join('')}
@@ -364,7 +416,7 @@ ${r.needsReview.length ? `<section id="review" aria-labelledby="review-h">
   <details class="card"><summary>Show ${r.needsReview.length} groups (${fmt(s.needsReview.nodes)} elements)</summary>
   <div class="table-wrap"><table>
     <thead><tr><th scope="col">Rule</th><th scope="col">Check</th><th scope="col">Root cause</th><th scope="col" class="num">Elements</th><th scope="col" class="num">Pages</th></tr></thead>
-    <tbody>${r.needsReview.map((g) => `<tr><td><code>${esc(g.ruleId)}</code></td><td>${esc(g.help)}</td><td><code>${esc(g.signature)}</code></td><td class="num">${g.occurrences}</td><td class="num">${g.pageCount}</td></tr>`).join('')}</tbody>
+    <tbody>${r.needsReview.map((g) => `<tr><td><code>${esc(g.ruleId)}</code>${explainButton(g.ruleId, true)}</td><td>${esc(g.help)}</td><td><code>${esc(g.signature)}</code></td><td class="num">${g.occurrences}</td><td class="num">${g.pageCount}</td></tr>`).join('')}</tbody>
   </table></div></details>
 </section>` : ''}
 
@@ -411,6 +463,8 @@ ${imagesSection(r.pages)}
 </section>
 </main>
 
+${explainedRules.map(explainDialog).join('\n')}
+
 <script>${JS}</script>
 </body>
 </html>
@@ -453,6 +507,23 @@ const JS = `
       function () { status.textContent = 'Prompt copied to the clipboard.'; },
       function () { status.textContent = 'Copy failed: open the prompt and select it manually.'; }
     );
+  });
+})();
+(function () {
+  // "?" explanations in modal dialogs. Without <dialog> support the buttons stay hidden.
+  if (typeof HTMLDialogElement !== 'function') return;
+  document.querySelectorAll('.js-only').forEach(function (el) { el.hidden = false; });
+  document.querySelectorAll('.explain-btn').forEach(function (b) {
+    var d = document.getElementById(b.getAttribute('data-explain'));
+    if (!d) return;
+    b.hidden = false;
+    b.addEventListener('click', function () { d.showModal(); d.returnTo = b; });
+  });
+  document.querySelectorAll('dialog.explain').forEach(function (d) {
+    d.querySelector('.explain-close').addEventListener('click', function () { d.close(); });
+    // A click on the backdrop (outside the inner panel) closes the dialog.
+    d.addEventListener('click', function (e) { if (e.target === d) d.close(); });
+    d.addEventListener('close', function () { if (d.returnTo) d.returnTo.focus(); });
   });
 })();
 (function () {
@@ -612,6 +683,35 @@ pre.prompt { max-height: 32rem; overflow-y: auto; margin-top: .8rem; }
 .gain-bar { height: 6px; background: var(--ring-track); border-radius: 999px; overflow: hidden; }
 .gain-bar span { display: block; height: 100%; background: var(--focus); }
 .issue-body { padding: 0 1.1rem 1.1rem 4.3rem; border-top: 1px solid var(--border); }
+
+/* "?" explanation buttons and dialogs. */
+.issue { position: relative; }
+.issue.has-explain summary { padding-right: 3.6rem; }
+.explain-btn { position: absolute; top: 1rem; right: 1rem; width: 2rem; height: 2rem; padding: 0; display: grid; place-items: center; font: inherit; font-size: 15px; font-weight: 700; line-height: 1; color: var(--text); background: var(--surface); border: 1px solid var(--control); border-radius: 50%; cursor: pointer; }
+.explain-btn.inline { position: static; display: inline-grid; vertical-align: middle; width: 1.6rem; height: 1.6rem; font-size: 13px; margin-left: .35rem; }
+.explain-btn:hover { border-color: var(--text); border-width: 2px; }
+.explain-btn[hidden], .js-only[hidden] { display: none; }
+.explain-sample { display: inline-grid; place-items: center; width: 1.3rem; height: 1.3rem; border: 1px solid var(--control); border-radius: 50%; font-weight: 700; font-size: 12px; color: var(--text); vertical-align: 1px; }
+dialog.explain { width: min(42rem, calc(100vw - 32px)); max-height: calc(100vh - 32px); overflow: auto; padding: 0; color: var(--text); background: var(--surface); border: 2px solid var(--control); border-radius: 16px; }
+dialog.explain::backdrop { background: rgb(0 0 0 / .65); }
+.explain-inner { padding: 1.25rem 1.5rem 1.5rem; }
+.explain-inner > p, .explain-inner ol { max-width: 70ch; }
+.explain-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem; }
+.explain-kicker { margin: 0; font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+.explain-kicker code { text-transform: none; letter-spacing: normal; }
+.explain h2 { font-size: 20px; margin: .3rem 0 0; letter-spacing: -.01em; }
+.explain h3 { font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 1.2rem 0 .4rem; }
+.explain-short { font-size: 16px; margin: 1rem 0 0; }
+.explain-close { flex: none; font: inherit; font-size: 14px; color: var(--text); background: transparent; border: 1px solid var(--control); border-radius: 999px; padding: .25rem .8rem; cursor: pointer; }
+.affects li { font-size: 14px; border: 1px solid var(--border); border-radius: 999px; padding: .1rem .65rem; }
+.explain-analogy { border-left: 3px solid var(--control); padding-left: .8rem; margin: 1.2rem 0 0; }
+.explain ol { padding-left: 1.3rem; margin: 0; }
+.explain ol li { margin: .3rem 0; }
+.explain-code { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .8rem; margin-top: 1rem; }
+.explain-code figure { margin: 0; }
+.explain-code figcaption { font-size: 14px; font-weight: 600; margin-bottom: .3rem; }
+.explain-wcag { font-size: 14px; color: var(--muted); margin: 1.2rem 0 0; }
+.explain-wcag strong { color: var(--text); }
 .chips { list-style: none; padding: 0; margin: 0; display: flex; flex-wrap: wrap; gap: .35rem; }
 
 /* Offset layer cards (4px), echoing the interlocking "DD": page > element > markup. */
@@ -664,13 +764,15 @@ details.card > summary { cursor: pointer; font-weight: 600; }
   .rank { display: none; }
   .issue-nums { text-align: left; }
   .issue-body { padding-left: 1.1rem; }
+  .explain-code { grid-template-columns: 1fr; }
+  .explain-inner { padding: 1rem; }
   .top nav { display: none; }
   .top-inner { justify-content: space-between; }
   .brand .muted { display: none; }
 }
 @media (prefers-reduced-motion: no-preference) { html { scroll-behavior: smooth; } }
 @media print {
-  .top, .filters, .skip, .theme-toggle { display: none; }
+  .top, .filters, .skip, .theme-toggle, .explain-btn, .js-only { display: none; }
   :root { color-scheme: light; --bg: #fff; --surface: #fff; --sunken: #f4f4f5; --text: #000; --muted: #3f3f46; --border: #a1a1aa; --layer: #d4d4d8;
     --bad: #b91c1c; --bad-fill: #dc2626; --poor: #c2410c; --fair: #854d0e; --good: #15803d; --minor: #3f3f46; --link-line: #000; --code-bg: #f4f4f5; --code-border: #d4d4d8; }
 }

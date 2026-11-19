@@ -57,6 +57,9 @@ test('audits the /shop subtree of the fixture site', { timeout: 120_000 }, async
     assert.match(html, /<html lang="en">/);
     assert.ok(!html.includes('<button class="icon-btn"></button>'), 'raw site HTML must be escaped');
     assert.ok(html.includes('&lt;button class=&quot;icon-btn&quot;&gt;'));
+    // "?" explanations: one button per explained issue, one dialog per rule, buttons hidden until JS runs.
+    assert.match(html, /<button type="button" class="explain-btn" data-explain="explain-image-alt" aria-haspopup="dialog" hidden>/);
+    assert.equal(html.match(/<dialog class="explain" id="explain-image-alt"/g)?.length, 1);
 
     // fix prompt: every group lands in exactly one MR category, and the prompt is embedded escaped
     const plan = buildFixPlan(report);

@@ -136,6 +136,16 @@ Write it to be read and acted on directly. Structure:
    - **Done when**: the group `id` no longer appears in a `--same-pages` re-run, and no new group appears in the same area.
 3. **Cautions**: patterns that probably come from a design system, CMS content (for example alt text written by editors) or third-party widgets, where the fix lives somewhere other than the page markup.
 
+## Explanations library (only when asked)
+
+`assets/explanations.json` holds one plain-language explanation per axe rule, shown behind a "?" button next to each defect in `report.html`. It is generic (not about any site) and shared by all reports. When asked to write or update entries (new rules after an axe-core upgrade, a clearer wording), return the entries as one JSON object keyed by rule id, instead of the audit deliverables:
+
+```json
+{ "<ruleId>": { "title": "max 8 words", "inShort": "one sentence, no jargon", "atStake": "2-3 sentences: what concretely goes wrong for real people", "affects": ["Screen-reader users"], "analogy": "one everyday-life comparison", "fix": ["imperative step"], "bad": "minimal snippet", "good": "same snippet fixed", "wcag": "criterion in plain words, or 'Best practice, not a WCAG requirement: ...'" } }
+```
+
+Audience: developers who know HTML but nothing about accessibility. Same voice as above, in shorter sentences; backticks are the only Markdown allowed.
+
 ## 5. Final message format (strict)
 
 Your final message is read by the calling session, which writes the files. Use exactly this structure:

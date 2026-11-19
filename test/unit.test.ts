@@ -133,3 +133,16 @@ test('auth: login pages, logout links, session lifetime', () => {
   const old = { cookies: [cookie('t', '.orange.fr', now / 1000 - 10)], origins: [] };
   assert.equal(sessionLifetime(old, `${o}/`, now).expired, true);
 });
+
+test('explanations: every in-scope axe rule has a complete plain-language entry', async () => {
+  const { explanationFor } = await import('../src/explain.ts');
+  const { WCAG_TAGS } = await import('../src/wcag.ts');
+  const axe = (await import('axe-core')).default;
+  const tags = [...WCAG_TAGS, 'best-practice'];
+  const inScope = axe.getRules().filter((r) => r.tags.some((t) => tags.includes(t)) && !r.tags.includes('deprecated'));
+  const missing = inScope.map((r) => r.ruleId).filter((id) => {
+    const e = explanationFor(id);
+    return !e || !e.atStake || !e.affects?.length || !e.fix?.length;
+  });
+  assert.deepEqual(missing, [], 'add these rules to assets/explanations.json');
+});

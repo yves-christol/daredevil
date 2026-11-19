@@ -21,6 +21,7 @@ runs the CLI and adds AI-assisted review, a human summary and a fix handoff.
 - `src/report.ts`: report.json assembly, diff, markdown
 - `src/fixprompt.ts`: `fix-prompt.md`, the AI fix prompt: findings bucketed by fix category (rule table, then WCAG fallback), one merge request per category
 - `src/html.ts`: self-contained HTML report (escapes all site-derived content; must itself stay accessible)
+- `src/explain.ts` + `assets/explanations.json`: plain-language "for dummies" explanation per axe rule (what is at stake, who is affected, fix, before/after), written by the daredevil agent; shown behind a "?" button on each defect in `report.html`. A unit test requires an entry for every in-scope axe rule, so an axe-core upgrade that adds rules means adding entries
 - `src/auth.ts`: session capture (`login`), session loading, login-page and logout-link detection
 - `src/consent.ts`: cookie-dialog dismissal ("reject", never "accept")
 - `src/brand.ts`: embeds `assets/logo.svg` (inline header logo + favicon)

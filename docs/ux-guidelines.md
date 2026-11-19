@@ -88,5 +88,6 @@ Sections 1–5 above are the original guidelines. This section records how they 
 - Borders instead of shadows; the score panel and open issues use 2px borders.
 - Skip link "Skip to violation list" as the first focusable element.
 - Live region: the issue filter announces the number of issues shown (`aria-live="polite"`).
+- Explanations: a round "?" button (2rem, 1.6rem inline; ≥ 24px target) next to each issue, outside the `<summary>` to avoid nested interactive controls. It opens a native modal `<dialog>` (focus moves in, Esc closes, focus returns to the button); its accessible name is "Explain “<title>”". Buttons stay hidden without JavaScript or `<dialog>` support.
 - Smooth scrolling only when `prefers-reduced-motion: no-preference`.
 - Fonts: Inter / JetBrains Mono are used when installed. Reports never load web fonts, so they stay self-contained, work offline and send no requests; the fallback is the system UI and monospace stacks.

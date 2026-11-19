@@ -1,0 +1,1670 @@
+{
+  "accesskeys": {
+    "title": "Two shortcuts on the same key",
+    "inShort": "Several elements use the same `accesskey` value, so one keyboard shortcut points to more than one place.",
+    "atStake": "A keyboard shortcut is meant to jump to one specific control. When two elements share it, the browser picks one or cycles between them, and the user lands somewhere they did not expect. Duplicate keys can also clash with the browser's or the screen reader's own shortcuts.",
+    "affects": [
+      "Keyboard users",
+      "Screen-reader users"
+    ],
+    "analogy": "Two doors in the same hallway with the same room number.",
+    "fix": [
+      "Give each `accesskey` a unique value.",
+      "Better still, remove `accesskey` unless users explicitly need it; it often conflicts with assistive-technology shortcuts."
+    ],
+    "bad": "<a href=\"/\" accesskey=\"h\">Home</a>\n<a href=\"/help\" accesskey=\"h\">Help</a>",
+    "good": "<a href=\"/\" accesskey=\"h\">Home</a>\n<a href=\"/help\" accesskey=\"e\">Help</a>",
+    "wcag": "Best practice, not a WCAG requirement: a shortcut that leads to an unpredictable target is worse than no shortcut."
+  },
+  "area-alt": {
+    "title": "Clickable image-map areas without a name",
+    "inShort": "A clickable zone (`<area>`) in an image map has no text saying where it leads.",
+    "atStake": "A screen reader reaches the link and has nothing to read, so it announces the URL or just \"link\". The user cannot tell which region of the map they are on or where it goes. Voice-control users cannot name the link to click it.",
+    "affects": [
+      "Screen-reader users",
+      "Voice-control users"
+    ],
+    "analogy": "A map of the country with clickable regions but no region names.",
+    "fix": [
+      "Add an `alt` attribute to every `<area>` that has an `href`, describing its destination.",
+      "Keep an `alt` on the parent `<img>` too, describing the image as a whole."
+    ],
+    "bad": "<img src=\"map.png\" usemap=\"#m\" alt=\"Store regions\">\n<map name=\"m\">\n  <area shape=\"rect\" coords=\"0,0,50,50\" href=\"/north\"></map>",
+    "good": "<img src=\"map.png\" usemap=\"#m\" alt=\"Store regions\">\n<map name=\"m\">\n  <area shape=\"rect\" coords=\"0,0,50,50\" href=\"/north\" alt=\"North region stores\"></map>",
+    "wcag": "2.4.4 Link Purpose (A): the purpose of each link must be clear from its text. Also 4.1.2 Name, Role, Value (A): every control must expose to assistive technology what it is, what it is called and what state it is in."
+  },
+  "aria-allowed-attr": {
+    "title": "ARIA attribute that does not fit the role",
+    "inShort": "An element carries an `aria-*` attribute that its role does not support.",
+    "atStake": "Assistive technology ignores the unsupported attribute or reports a state that makes no sense, such as a link announced as \"checked\". The user gets missing or wrong information about the control. The developer usually believes the state is announced when it is not.",
+    "affects": [
+      "Screen-reader users"
+    ],
+    "analogy": "A \"low fuel\" warning light installed on a bicycle.",
+    "fix": [
+      "Look up which attributes the element's role allows (WAI-ARIA spec or MDN).",
+      "Remove the attribute, or change the role to one that supports it.",
+      "For a toggle, use a `<button>` with `aria-pressed` instead of a link with `aria-checked`."
+    ],
+    "bad": "<a href=\"#\" aria-checked=\"true\">Dark mode</a>",
+    "good": "<button type=\"button\" aria-pressed=\"true\">Dark mode</button>",
+    "wcag": "4.1.2 Name, Role, Value (A): every control must expose to assistive technology what it is, what it is called and what state it is in."
+  },
+  "aria-allowed-role": {
+    "title": "Role that contradicts the element",
+    "inShort": "A `role` attribute overrides an HTML element with a role that does not suit it.",
+    "atStake": "The screen reader announces the overriding role, so a heading or list may be announced as a button and lose its structure. The element still behaves like the original HTML, so what the user hears and what happens do not match.",
+    "affects": [
+      "Screen-reader users"
+    ],
+    "analogy": "A sign reading \"Exit\" painted on a broom cupboard.",
+    "fix": [
+      "Remove the `role` if the native element already means the right thing.",
+      "If you need a different behaviour, use the matching HTML element instead (`<button>`, `<a>`, `<ul>`)."
+    ],
+    "bad": "<h2 role=\"button\">Shipping details</h2>",
+    "good": "<h2><button type=\"button\" aria-expanded=\"false\">Shipping details</button></h2>",
+    "wcag": "Best practice, not a WCAG requirement: native HTML semantics are tested and reliable; overriding them with an unsuitable role usually breaks them."
+  },
+  "aria-braille-equivalent": {
+    "title": "Braille-only label without a spoken one",
+    "inShort": "An element has `aria-braillelabel` or `aria-brailleroledescription` but no matching normal label or role description.",
+    "atStake": "The braille attributes are only meant to shorten text that already exists for speech. Without the spoken equivalent, speech users hear nothing or a generic role, and some braille displays fall back to nothing as well.",
+    "affects": [
+      "Screen-reader users",
+      "Braille users"
+    ],
+    "analogy": "A footnote abbreviation with no full term anywhere in the text.",
+    "fix": [
+      "Give the element an accessible name (visible text, `aria-label` or `aria-labelledby`) before adding `aria-braillelabel`.",
+      "Add `aria-roledescription` whenever you use `aria-brailleroledescription`."
+    ],
+    "bad": "<button aria-braillelabel=\"del\"><svg>...</svg></button>",
+    "good": "<button aria-label=\"Delete\" aria-braillelabel=\"del\"><svg aria-hidden=\"true\">...</svg></button>",
+    "wcag": "4.1.2 Name, Role, Value (A): every control must expose to assistive technology what it is, what it is called and what state it is in."
+  },
+  "aria-command-name": {
+    "title": "ARIA button or link without a name",
+    "inShort": "An element with `role=\"button\"`, `role=\"link\"` or `role=\"menuitem\"` has no text naming it.",
+    "atStake": "The screen reader announces \"button\" or \"link\" and nothing else. The user cannot know what it does without activating it. Voice-control users cannot say its name to click it.",
+    "affects": [
+      "Screen-reader users",
+      "Voice-control users"
+    ],
+    "analogy": "A row of identical unlabelled switches on a wall.",
+    "fix": [
+      "Put visible text inside the element.",
+      "For icon-only controls, add `aria-label` describing the action.",
+      "Prefer a native `<button>` or `<a href>` over a `div` with a role."
+    ],
+    "bad": "<div role=\"button\" tabindex=\"0\"><i class=\"icon-trash\"></i></div>",
+    "good": "<div role=\"button\" tabindex=\"0\" aria-label=\"Delete\"><i class=\"icon-trash\" aria-hidden=\"true\"></i></div>",
+    "wcag": "4.1.2 Name, Role, Value (A): every control must expose to assistive technology what it is, what it is called and what state it is in."
+  },
+  "aria-conditional-attr": {
+    "title": "ARIA attribute used outside its allowed context",
+    "inShort": "An ARIA attribute is used on a role where the spec only allows it in certain conditions, or it contradicts the native element's own state.",
+    "atStake": "Typical cases: `aria-checked` on a native checkbox that says the opposite of its real state, or row attributes like `aria-level` on a table row outside a tree grid. Screen readers then announce a wrong state or ignore the attribute, and the user acts on false information.",
+    "affects": [
+      "Screen-reader users"
+    ],
+    "analogy": "A light switch whose label says \"on\" while the light is off.",
+    "fix": [
+      "On native checkboxes, drop `aria-checked` and use the `checked` property; use `indeterminate` for mixed state.",
+      "Only use tree-grid attributes on rows inside `role=\"treegrid\"`."
+    ],
+    "bad": "<input type=\"checkbox\" checked aria-checked=\"false\">",
+    "good": "<input type=\"checkbox\" checked>",
+    "wcag": "4.1.2 Name, Role, Value (A): every control must expose to assistive technology what it is, what it is called and what state it is in."
+  },
+  "aria-deprecated-role": {
+    "title": "Outdated ARIA role",
+    "inShort": "An element uses a `role` that the ARIA specification has deprecated.",
+    "atStake": "Browsers and screen readers are dropping support for deprecated roles. The element may be announced with no role at all, so users lose the information it was meant to convey.",
+    "affects": [
+      "Screen-reader users"
+    ],
+    "analogy": "Writing an address with a postcode format that the post office stopped accepting.",
+    "fix": [
+      "Replace the deprecated role with its current equivalent or a native element.",
+      "For `role=\"directory\"`, use `role=\"list\"` or a `<ul>`."
+    ],
+    "bad": "<div role=\"directory\">...</div>",
+    "good": "<ul>\n  <li>...</li>\n</ul>",
+    "wcag": "4.1.2 Name, Role, Value (A): every control must expose to assistive technology what it is, what it is called and what state it is in."
+  },
+  "aria-dialog-name": {
+    "title": "Dialog without a title",
+    "inShort": "An element with `role=\"dialog\"` or `role=\"alertdialog\"` has no accessible name.",
+    "atStake": "When the dialog opens, the screen reader announces \"dialog\" with no title. The user does not know why it appeared or what it is for until they read through its content.",
+    "affects": [
+      "Screen-reader users"
+    ],
+    "analogy": "A form handed to you with the title cut off the top.",
+    "fix": [
+      "Point `aria-labelledby` at the dialog's visible heading.",
+      "If there is no visible heading, add `aria-label`."
+    ],
+    "bad": "<div role=\"dialog\">\n  <h2>Delete file?</h2>...\n</div>",
+    "good": "<div role=\"dialog\" aria-labelledby=\"dlg-title\">\n  <h2 id=\"dlg-title\">Delete file?</h2>...\n</div>",
+    "wcag": "Best practice, not a WCAG requirement: a named dialog tells users immediately what interrupted them."
+  },
+  "aria-hidden-body": {
+    "title": "The whole page hidden from screen readers",
+    "inShort": "The `<body>` element has `aria-hidden=\"true\"`, which hides the entire page from assistive technology.",
+    "atStake": "Screen readers see an empty page. Users can still tab onto links and buttons but hear nothing about them. This often happens when a modal script hides the background and forgets to restore it.",
+    "affects": [
+      "Screen-reader users"
+    ],
+    "analogy": "A shop with the lights switched off but the doors still open.",
+    "fix": [
+      "Remove `aria-hidden` from `<body>`.",
+      "To hide background content behind a modal, put `inert` or `aria-hidden` on a wrapper sibling of the modal, not on `<body>`, and remove it on close."
+    ],
+    "bad": "<body aria-hidden=\"true\">",
+    "good": "<body>",
+    "wcag": "1.3.1 Info and Relationships (A): structure and content shown visually must also be available to assistive technology. Also 4.1.2 Name, Role, Value (A): every control must expose to assistive technology what it is, what it is called and what state it is in."
+  },
+  "aria-hidden-focus": {
+    "title": "Hidden content that can still get focus",
+    "inShort": "An element hidden with `aria-hidden=\"true\"` is focusable or contains links, buttons or fields.",
+    "atStake": "A keyboard user can tab into the hidden area. The screen reader then announces nothing, or something unrelated, while focus sits on an invisible control. The user is lost and may activate something by accident.",
+    "affects": [
+      "Screen-reader users",
+      "Keyboard users"
+    ],
+    "analogy": "A door in a dark room that you can walk through but cannot see.",
+    "fix": [
+      "If the content should be hidden from everyone, use `hidden` or `display: none`.",
+      "If it must stay visible but inactive, use the `inert` attribute.",
+      "Otherwise remove `aria-hidden`, or add `tabindex=\"-1\"` to every focusable child."
+    ],
+    "bad": "<div aria-hidden=\"true\">\n  <a href=\"/offer\">See offer</a>\n</div>",
+    "good": "<div inert aria-hidden=\"true\">\n  <a href=\"/offer\">See offer</a>\n</div>",
+    "wcag": "4.1.2 Name, Role, Value (A): every control must expose to assistive technology what it is, what it is called and what state it is in."
+  },
+  "aria-input-field-name": {
+    "title": "Custom input field without a label",
+    "inShort": "An element acting as an input (`role=\"combobox\"`, `textbox`, `listbox`, `searchbox`, `spinbutton`, `slider`) has no accessible name.",
+    "atStake": "The screen reader announces \"combo box\" or \"edit text\" with no label. The user does not know what to type or choose. Voice-control users cannot target the field by name.",
+    "affects": [
+      "Screen-reader users",
+      "Voice-control users"
+    ],
+    "analogy": "A paper form with blank boxes and no question next to them.",
+    "fix": [
+      "Add a visible label and link it with `aria-labelledby`.",
+      "If no visible label is possible, add `aria-label`.",
+      "Prefer native `<input>` or `<select>` with a `<label>`."
+    ],
+    "bad": "<div role=\"combobox\" aria-expanded=\"false\" tabindex=\"0\"></div>",
+    "good": "<span id=\"lbl-country\">Country</span>\n<div role=\"combobox\" aria-labelledby=\"lbl-country\" aria-expanded=\"false\" tabindex=\"0\"></div>",
+    "wcag": "4.1.2 Name, Role, Value (A): every control must expose to assistive technology what it is, what it is called and what state it is in."
+  },
+  "aria-meter-name": {
+    "title": "Meter without a name",
+    "inShort": "An element with `role=\"meter\"` has no accessible name saying what it measures.",
+    "atStake": "The screen reader announces a value such as \"meter, 70%\" without saying 70% of what. Disk space, battery and password strength all sound the same.",
+    "affects": [
+      "Screen-reader users"
+    ],
+    "analogy": "A gauge on a dashboard with the label scratched off.",
+    "fix": [
+      "Add `aria-labelledby` pointing to visible text, or `aria-label`.",
+      "Consider the native `<meter>` element with a `<label>`."
+    ],
+    "bad": "<div role=\"meter\" aria-valuenow=\"70\" aria-valuemin=\"0\" aria-valuemax=\"100\"></div>",
+    "good": "<div role=\"meter\" aria-label=\"Disk usage\" aria-valuenow=\"70\" aria-valuemin=\"0\" aria-valuemax=\"100\"></div>",
+    "wcag": "1.1.1 Non-text Content (A): anything that is not text, such as a graphic gauge, needs a text equivalent."
+  },
+  "aria-progressbar-name": {
+    "title": "Progress bar without a name",
+    "inShort": "An element with `role=\"progressbar\"` has no accessible name saying what is in progress.",
+    "atStake": "The screen reader announces \"progress bar, 40%\" with no context. If several tasks run at once, the user cannot tell which is which or what they are waiting for.",
+    "affects": [
+      "Screen-reader users"
+    ],
+    "analogy": "A loading bar with no indication of what is loading.",
+    "fix": [
+      "Add `aria-label` or `aria-labelledby` naming the task.",
+      "Consider the native `<progress>` element with a `<label>`."
+    ],
+    "bad": "<div role=\"progressbar\" aria-valuenow=\"40\"></div>",
+    "good": "<div role=\"progressbar\" aria-label=\"Uploading report.pdf\" aria-valuenow=\"40\"></div>",
+    "wcag": "1.1.1 Non-text Content (A): anything that is not text, such as a graphic bar, needs a text equivalent."
+  },
+  "aria-prohibited-attr": {
+    "title": "Label on an element that cannot have one",
+    "inShort": "An element uses an ARIA attribute its role forbids, most often `aria-label` on a plain `div` or `span`.",
+    "atStake": "Screen readers ignore names on generic elements, paragraphs and similar roles, or announce them inconsistently. Text you put in `aria-label` there is never heard, so the information is lost.",
+    "affects": [
+      "Screen-reader users"
+    ],
+    "analogy": "A caption attached to empty wall space instead of the painting.",
+    "fix": [
+      "Move the text into the visible content, or into visually hidden text.",
+      "Or give the element a role that accepts a name, if it really is a control or region.",
+      "Remove the attribute if it adds nothing."
+    ],
+    "bad": "<span aria-label=\"4 out of 5 stars\">★★★★☆</span>",
+    "good": "<span role=\"img\" aria-label=\"4 out of 5 stars\">★★★★☆</span>",
+    "wcag": "4.1.2 Name, Role, Value (A): every control must expose to assistive technology what it is, what it is called and what state it is in."
+  },
+  "aria-required-attr": {
+    "title": "Role missing a required ARIA state",
+    "inShort": "An element has an ARIA role but lacks an attribute that role cannot work without.",
+    "atStake": "For example, a `role=\"checkbox\"` without `aria-checked` or a `role=\"slider\"` without `aria-valuenow`. The screen reader cannot report the state or value, so the user does not know whether the box is ticked or where the slider is.",
+    "affects": [
+      "Screen-reader users"
+    ],
+    "analogy": "A thermostat that shows no temperature.",
+    "fix": [
+      "Add the attributes the role requires (see the WAI-ARIA spec for the role).",
+      "Update them in JavaScript whenever the state changes.",
+      "Prefer native `<input type=\"checkbox\">` or `<input type=\"range\">`, which handle this for you."
+    ],
+    "bad": "<div role=\"checkbox\" tabindex=\"0\">Subscribe</div>",
+    "good": "<div role=\"checkbox\" aria-checked=\"false\" tabindex=\"0\">Subscribe</div>",
+    "wcag": "4.1.2 Name, Role, Value (A): every control must expose to assistive technology what it is, what it is called and what state it is in."
+  },
+  "aria-required-children": {
+    "title": "ARIA container missing its required items",
+    "inShort": "An element with a role like `list`, `menu`, `tablist` or `listbox` does not contain the child roles it needs.",
+    "atStake": "Screen readers announce the container but find no items in it, or report wrong counts like \"list, 0 items\". Navigation keys that move between items do not work, so the user cannot browse the content.",
+    "affects": [
+      "Screen-reader users",
+      "Keyboard users"
+    ],
+    "analogy": "A table of contents with headings but no chapters listed.",
+    "fix": [
+      "Give each child the matching role (`listitem`, `menuitem`, `tab`, `option`).",
+      "Mark wrapper elements in between with `role=\"none\"`.",
+      "Or use native `<ul>`/`<li>` and `<select>`/`<option>`."
+    ],
+    "bad": "<div role=\"tablist\">\n  <button>Details</button>\n</div>",
+    "good": "<div role=\"tablist\">\n  <button role=\"tab\" aria-selected=\"true\">Details</button>\n</div>",
+    "wcag": "1.3.1 Info and Relationships (A): structure shown visually, such as a group of items, must also be available to assistive technology."
+  },
+  "aria-required-parent": {
+    "title": "ARIA item outside its required container",
+    "inShort": "An element with a role like `listitem`, `menuitem`, `tab` or `option` is not inside the container role it belongs to.",
+    "atStake": "Screen readers cannot say \"tab 2 of 4\" or \"item 3 of 10\" because there is no group to count. Some ignore the role entirely. A `div` between parent and child is often the cause.",
+    "affects": [
+      "Screen-reader users"
+    ],
+    "analogy": "A page torn out of a book: you have the content but not where it belongs.",
+    "fix": [
+      "Wrap the items in an element with the required parent role.",
+      "If an intermediate element breaks the chain, give it `role=\"none\"`."
+    ],
+    "bad": "<ul role=\"menu\">\n  <li><a role=\"menuitem\" href=\"/a\">Account</a></li>\n</ul>",
+    "good": "<ul role=\"menu\">\n  <li role=\"none\"><a role=\"menuitem\" href=\"/a\">Account</a></li>\n</ul>",
+    "wcag": "1.3.1 Info and Relationships (A): relationships shown visually, such as an item belonging to a menu, must also be available to assistive technology."
+  },
+  "aria-roles": {
+    "title": "Invalid ARIA role",
+    "inShort": "A `role` attribute contains a value that does not exist in ARIA, often a typo or an invented name.",
+    "atStake": "Assistive technology ignores an unknown role. A custom widget built on it is announced as plain text or a generic group, and the user does not know it is interactive.",
+    "affects": [
+      "Screen-reader users"
+    ],
+    "analogy": "A delivery address with a street name that does not exist.",
+    "fix": [
+      "Check the spelling against the WAI-ARIA list of roles.",
+      "Use a real role or, better, the native HTML element.",
+      "Remove the `role` if it was decorative."
+    ],
+    "bad": "<div role=\"buton\" tabindex=\"0\">Save</div>",
+    "good": "<button type=\"button\">Save</button>",
+    "wcag": "4.1.2 Name, Role, Value (A): every control must expose to assistive technology what it is, what it is called and what state it is in."
+  },
+  "aria-tab-name": {
+    "title": "Tab without a name",
+    "inShort": "An element with `role=\"tab\"` has no accessible name.",
+    "atStake": "The screen reader announces \"tab, 1 of 3\" with no label. The user cannot tell the tabs apart or pick the one they want without opening each.",
+    "affects": [
+      "Screen-reader users",
+      "Voice-control users"
+    ],
+    "analogy": "A binder with coloured dividers and nothing written on them.",
+    "fix": [
+      "Put visible text inside each tab.",
+      "For icon-only tabs, add `aria-label`."
+    ],
+    "bad": "<button role=\"tab\" aria-selected=\"true\"><svg>...</svg></button>",
+    "good": "<button role=\"tab\" aria-selected=\"true\" aria-label=\"Settings\"><svg aria-hidden=\"true\">...</svg></button>",
+    "wcag": "4.1.2 Name, Role, Value (A): every control must expose to assistive technology what it is, what it is called and what state it is in."
+  },
+  "aria-text": {
+    "title": "role=\"text\" wrapping interactive elements",
+    "inShort": "An element with `role=\"text\"` contains links, buttons or other focusable elements.",
+    "atStake": "`role=\"text\"` tells some screen readers, notably VoiceOver on iOS, to read its content as a single run of plain text. Links or buttons inside lose their role, so users cannot find or activate them.",
+    "affects": [
+      "Screen-reader users"
+    ],
+    "analogy": "Laminating a page that has a tear-off coupon on it.",
+    "fix": [
+      "Remove `role=\"text\"` from any element containing focusable content.",
+      "Only use it to stop a screen reader splitting a short static phrase."
+    ],
+    "bad": "<span role=\"text\">Price: $9 <a href=\"/terms\">terms</a></span>",
+    "good": "<span role=\"text\">Price: $9</span> <a href=\"/terms\">terms</a>",
+    "wcag": "Best practice, not a WCAG requirement: `role=\"text\"` is non-standard and flattens whatever is inside it."
+  },
+  "aria-toggle-field-name": {
+    "title": "Custom toggle without a label",
+    "inShort": "An element with `role=\"checkbox\"`, `switch`, `radio`, `menuitemcheckbox` or `menuitemradio` has no accessible name.",
+    "atStake": "The screen reader announces \"switch, off\" without saying what it switches. The user cannot make an informed choice, and voice-control users cannot target it.",
+    "affects": [
+      "Screen-reader users",
+      "Voice-control users"
+    ],
+    "analogy": "An on/off switch on the wall with no idea which light it controls.",
+    "fix": [
+      "Put the label text inside the element or link it with `aria-labelledby`.",
+      "Prefer a native `<input type=\"checkbox\">` with a `<label>`."
+    ],
+    "bad": "<span role=\"switch\" aria-checked=\"false\" tabindex=\"0\"></span> Notifications",
+    "good": "<span role=\"switch\" aria-checked=\"false\" tabindex=\"0\" aria-labelledby=\"n\"></span>\n<span id=\"n\">Notifications</span>",
+    "wcag": "4.1.2 Name, Role, Value (A): every control must expose to assistive technology what it is, what it is called and what state it is in."
+  },
+  "aria-tooltip-name": {
+    "title": "Empty tooltip",
+    "inShort": "An element with `role=\"tooltip\"` has no text content or accessible name.",
+    "atStake": "Any control that points to the tooltip with `aria-describedby` gets an empty description. The hint that sighted users see on hover never reaches screen-reader users.",
+    "affects": [
+      "Screen-reader users"
+    ],
+    "analogy": "A speech bubble with nothing written in it.",
+    "fix": [
+      "Put the tooltip text inside the tooltip element.",
+      "Make sure it is present in the DOM when referenced, not injected empty."
+    ],
+    "bad": "<div role=\"tooltip\" id=\"tip\"></div>",
+    "good": "<div role=\"tooltip\" id=\"tip\">Password must be 12 characters</div>",
+    "wcag": "4.1.2 Name, Role, Value (A): every control must expose to assistive technology what it is, what it is called and what state it is in."
+  },
+  "aria-treeitem-name": {
+    "title": "Tree item without a name",
+    "inShort": "An element with `role=\"treeitem\"` in a tree view has no accessible name.",
+    "atStake": "In a file explorer or nested navigation, the screen reader announces \"tree item, level 2\" without the item's label. The user cannot tell folders or sections apart.",
+    "affects": [
+      "Screen-reader users"
+    ],
+    "analogy": "A family tree with boxes but no names in them.",
+    "fix": [
+      "Put visible text inside each tree item.",
+      "For icon-only items, add `aria-label`."
+    ],
+    "bad": "<li role=\"treeitem\" aria-expanded=\"false\"><i class=\"icon-folder\"></i></li>",
+    "good": "<li role=\"treeitem\" aria-expanded=\"false\"><i class=\"icon-folder\" aria-hidden=\"true\"></i> Invoices</li>",
+    "wcag": "Best practice, not a WCAG requirement: unnamed items make a tree impossible to browse by ear."
+  },
+  "aria-valid-attr": {
+    "title": "Misspelled or invented ARIA attribute",
+    "inShort": "An attribute starting with `aria-` is not a real ARIA attribute.",
+    "atStake": "Browsers ignore unknown attributes. A typo like `aria-lable` means the label, state or relationship is never passed to assistive technology, and the control is announced without it.",
+    "affects": [
+      "Screen-reader users"
+    ],
+    "analogy": "A letter posted with the recipient's name misspelled beyond recognition.",
+    "fix": [
+      "Correct the spelling against the WAI-ARIA attribute list.",
+      "For custom data, use `data-*` attributes instead of `aria-*`."
+    ],
+    "bad": "<button aria-lable=\"Close\">×</button>",
+    "good": "<button aria-label=\"Close\">×</button>",
+    "wcag": "4.1.2 Name, Role, Value (A): every control must expose to assistive technology what it is, what it is called and what state it is in."
+  },
+  "aria-valid-attr-value": {
+    "title": "ARIA attribute with an invalid value",
+    "inShort": "An `aria-*` attribute has a value that is not allowed, or references an `id` that does not exist.",
+    "atStake": "Common cases: `aria-expanded=\"yes\"` instead of `true`, or `aria-labelledby` pointing to a missing `id`. Screen readers ignore the bad value, so the state or label the developer intended is never announced.",
+    "affects": [
+      "Screen-reader users"
+    ],
+    "analogy": "Writing \"maybe\" in a form box that only accepts yes or no.",
+    "fix": [
+      "Use only the values the spec allows (`true`, `false`, a number, or listed tokens).",
+      "Check that every `id` referenced by `aria-labelledby`, `aria-describedby` or `aria-controls` exists on the page."
+    ],
+    "bad": "<button aria-expanded=\"yes\" aria-controls=\"menu1\">Menu</button>",
+    "good": "<button aria-expanded=\"true\" aria-controls=\"menu1\">Menu</button>\n<ul id=\"menu1\">...</ul>",
+    "wcag": "4.1.2 Name, Role, Value (A): every control must expose to assistive technology what it is, what it is called and what state it is in."
+  },
+  "autocomplete-valid": {
+    "title": "Wrong autocomplete value on a form field",
+    "inShort": "A form field has an `autocomplete` value that is misspelled, not standard, or does not match the field type.",
+    "atStake": "Browsers and password managers cannot fill the field automatically. People with motor or memory difficulties must type everything by hand, and assistive tools that show icons for known fields cannot recognise it.",
+    "affects": [
+      "People with motor disabilities",
+      "People with cognitive disabilities",
+      "Mobile users"
+    ],
+    "analogy": "A form where the clerk refuses to copy your details from your ID card.",
+    "fix": [
+      "Use a value from the HTML autofill list, such as `email`, `given-name`, `tel`, `postal-code`.",
+      "Match the value to the field type (no `email` on a `type=\"number\"`).",
+      "Use `off` only for fields that are not about the user."
+    ],
+    "bad": "<input type=\"email\" autocomplete=\"e-mail\">",
+    "good": "<input type=\"email\" autocomplete=\"email\">",
+    "wcag": "1.3.5 Identify Input Purpose (AA): fields that collect information about the user must declare their purpose in code, so it can be filled or labelled automatically."
+  },
+  "avoid-inline-spacing": {
+    "title": "Text spacing locked with !important",
+    "inShort": "An inline `style` sets `letter-spacing`, `word-spacing` or `line-height` with `!important`, which user stylesheets cannot override.",
+    "atStake": "People with dyslexia or low vision often apply their own stylesheet or browser extension to increase spacing. Inline `!important` blocks it, so the text stays cramped and hard to read for them.",
+    "affects": [
+      "People with dyslexia",
+      "Low-vision users"
+    ],
+    "analogy": "A book printed so tightly you are not allowed to hold it further away.",
+    "fix": [
+      "Remove `!important` from inline spacing properties.",
+      "Move spacing into your stylesheet without `!important`."
+    ],
+    "bad": "<p style=\"line-height: 1.1 !important;\">...</p>",
+    "good": "<p style=\"line-height: 1.5;\">...</p>",
+    "wcag": "1.4.12 Text Spacing (AA): users must be able to increase line, paragraph, letter and word spacing without content breaking."
+  },
+  "blink": {
+    "title": "Blinking text",
+    "inShort": "The page uses the obsolete `<blink>` element.",
+    "atStake": "Blinking text is hard to read and pulls attention away from everything else. It is a serious distraction for people with attention disorders, and users cannot stop it. Screen readers gain nothing from it.",
+    "affects": [
+      "People with attention disorders",
+      "Low-vision users",
+      "People with cognitive disabilities"
+    ],
+    "analogy": "Trying to read a notice while someone flicks the lights on and off.",
+    "fix": [
+      "Remove `<blink>` and keep the text static.",
+      "Emphasise with `<strong>` or styling instead."
+    ],
+    "bad": "<blink>Sale ends today</blink>",
+    "good": "<strong>Sale ends today</strong>",
+    "wcag": "2.2.2 Pause, Stop, Hide (A): content that moves or blinks for more than five seconds must be stoppable by the user."
+  },
+  "button-name": {
+    "title": "Button without a name",
+    "inShort": "A button has no text, label or `title`, so nothing says what it does.",
+    "atStake": "The screen reader announces \"button\" and nothing else. Icon-only buttons, such as close, search or menu, are the usual cause. The user has to guess or press it to find out, and voice-control users cannot say its name.",
+    "affects": [
+      "Screen-reader users",
+      "Voice-control users"
+    ],
+    "analogy": "A remote control with blank buttons.",
+    "fix": [
+      "Put visible text inside the `<button>`.",
+      "For icon buttons, add `aria-label` describing the action.",
+      "Hide the decorative icon with `aria-hidden=\"true\"`."
+    ],
+    "bad": "<button><svg>...</svg></button>",
+    "good": "<button aria-label=\"Close\"><svg aria-hidden=\"true\">...</svg></button>",
+    "wcag": "4.1.2 Name, Role, Value (A): every control must expose to assistive technology what it is, what it is called and what state it is in."
+  },
+  "bypass": {
+    "title": "No way to skip repeated navigation",
+    "inShort": "The page has no skip link, no headings and no landmarks that let users jump past the header and menu to the main content.",
+    "atStake": "Keyboard users must press Tab through every menu link on every page before reaching the content. Screen-reader users have no heading or `<main>` landmark to jump to, so they listen to the whole header each time.",
+    "affects": [
+      "Keyboard users",
+      "Screen-reader users",
+      "Switch-device users"
+    ],
+    "analogy": "Having to read the full table of contents every time you turn a page.",
+    "fix": [
+      "Wrap the main content in `<main>`.",
+      "Add a \"Skip to content\" link as the first focusable element.",
+      "Use headings (`<h1>`, `<h2>`) to structure the content."
+    ],
+    "bad": "<div class=\"header\">...</div>\n<div class=\"content\">...</div>",
+    "good": "<a href=\"#main\" class=\"skip-link\">Skip to content</a>\n<header>...</header>\n<main id=\"main\">...</main>",
+    "wcag": "2.4.1 Bypass Blocks (A): there must be a way to skip content that repeats on every page."
+  },
+  "color-contrast": {
+    "title": "Text too faint against its background",
+    "inShort": "The colour of the text is too close to the colour behind it.",
+    "atStake": "People with low vision, colour-vision deficiency or ageing eyes cannot read the text, or read it slowly and with errors. It also fails for everyone on a phone in sunlight. Normal text needs a contrast ratio of at least 4.5:1, large text 3:1.",
+    "affects": [
+      "Low-vision users",
+      "Colour-blind users",
+      "Older users",
+      "Anyone in bright light"
+    ],
+    "analogy": "Grey pencil writing on grey paper.",
+    "fix": [
+      "Darken the text or lighten the background (or the reverse) until the ratio reaches 4.5:1.",
+      "Check placeholder text, disabled-looking links and text over images.",
+      "Use a contrast checker on the exact colours."
+    ],
+    "bad": "<p style=\"color: #999; background: #fff;\">Free delivery</p>",
+    "good": "<p style=\"color: #595959; background: #fff;\">Free delivery</p>",
+    "wcag": "1.4.3 Contrast (Minimum) (AA): text must have a contrast ratio of at least 4.5:1 with its background, or 3:1 for large text."
+  },
+  "css-orientation-lock": {
+    "title": "Page locked to portrait or landscape",
+    "inShort": "CSS forces the content into one screen orientation, for example by rotating it when the device is turned.",
+    "atStake": "Some people have their tablet or phone fixed to a wheelchair or stand in one orientation. If the page only works the other way, they see sideways content or cannot use it at all.",
+    "affects": [
+      "People with mounted devices",
+      "People with motor disabilities",
+      "Low-vision users"
+    ],
+    "analogy": "A poster you can only read if you tilt your head sideways.",
+    "fix": [
+      "Remove CSS that rotates or hides content based on `orientation`.",
+      "Let the layout adapt to both portrait and landscape.",
+      "Lock orientation only when essential, such as a piano app."
+    ],
+    "bad": "@media (orientation: portrait) {\n  body { transform: rotate(90deg); }\n}",
+    "good": "@media (orientation: portrait) {\n  .grid { grid-template-columns: 1fr; }\n}",
+    "wcag": "1.3.4 Orientation (AA): content must not be restricted to a single display orientation unless that orientation is essential."
+  },
+  "definition-list": {
+    "title": "Definition lists with the wrong children",
+    "inShort": "A `<dl>` contains elements other than `<dt>`/`<dd>` pairs, or the pairs are out of order.",
+    "atStake": "Screen readers announce a `<dl>` as a list of terms and their definitions, and tell the user how many items it holds. Stray elements break that structure: counts are wrong, terms lose their definitions, and the user cannot tell which value belongs to which label.",
+    "affects": [
+      "Screen-reader users"
+    ],
+    "analogy": "A glossary where some definitions are printed before their word, and random notes sit between the entries.",
+    "fix": [
+      "Put only `<dt>`, `<dd>`, `<div>`, `<script>` or `<template>` directly inside `<dl>`.",
+      "Place each `<dt>` before its `<dd>`.",
+      "If you need a wrapper for styling, wrap each `<dt>`/`<dd>` group in a `<div>`."
+    ],
+    "bad": "<dl>\n  <p>Price</p>\n  <dd>12 EUR</dd>\n</dl>",
+    "good": "<dl>\n  <dt>Price</dt>\n  <dd>12 EUR</dd>\n</dl>",
+    "wcag": "1.3.1 Info and Relationships (A): structure shown visually must also exist in the code, so assistive technology can convey it."
+  },
+  "dlitem": {
+    "title": "Term or definition outside a definition list",
+    "inShort": "A `<dt>` or `<dd>` is used without a parent `<dl>`.",
+    "atStake": "Outside a `<dl>`, `<dt>` and `<dd>` have no meaning to the browser. Screen readers read them as plain text, so the link between a term and its value is lost and no list is announced.",
+    "affects": [
+      "Screen-reader users"
+    ],
+    "analogy": "Torn-out lines of a dictionary scattered on a table: the words are there, but nothing says they belong together.",
+    "fix": [
+      "Wrap the `<dt>` and `<dd>` elements in a `<dl>`.",
+      "If it is not really a term/value list, use `<p>` or another suitable element instead."
+    ],
+    "bad": "<div>\n  <dt>Size</dt>\n  <dd>Large</dd>\n</div>",
+    "good": "<dl>\n  <dt>Size</dt>\n  <dd>Large</dd>\n</dl>",
+    "wcag": "1.3.1 Info and Relationships (A): structure shown visually must also exist in the code, so assistive technology can convey it."
+  },
+  "document-title": {
+    "title": "Page without a title",
+    "inShort": "The page has no `<title>`, or the `<title>` is empty.",
+    "atStake": "The title is the first thing a screen reader announces when a page loads. Without it, the user hears the URL or \"untitled\" and cannot tell where they landed. Browser tabs, bookmarks and history also show nothing useful, which hurts anyone juggling several tabs.",
+    "affects": [
+      "Screen-reader users",
+      "People with cognitive disabilities",
+      "Anyone using several tabs"
+    ],
+    "analogy": "A book with a blank spine on a shelf: you have to pull it out and open it to know what it is.",
+    "fix": [
+      "Add a `<title>` inside `<head>`.",
+      "Make it unique per page and put the specific part first, for example \"Cart - My Shop\"."
+    ],
+    "bad": "<head>\n  <title></title>\n</head>",
+    "good": "<head>\n  <title>Order history - My Shop</title>\n</head>",
+    "wcag": "2.4.2 Page Titled (A): every page needs a title that describes its topic or purpose."
+  },
+  "duplicate-id-aria": {
+    "title": "Duplicate IDs used by labels or ARIA",
+    "inShort": "Two elements share an `id`, and that `id` is referenced by a `<label for>` or an ARIA attribute such as `aria-labelledby`.",
+    "atStake": "When an `id` appears twice, the browser uses only the first match. A label can end up attached to the wrong field, or a field gets the name or description of an unrelated element. Screen readers then announce the wrong label, and clicking the label focuses the wrong input.",
+    "affects": [
+      "Screen-reader users",
+      "Voice-control users",
+      "Mouse users clicking labels"
+    ],
+    "analogy": "Two people in a room with the same name: you call one, the wrong one answers.",
+    "fix": [
+      "Give every element a unique `id`.",
+      "Update `for`, `aria-labelledby`, `aria-describedby` and similar attributes to point at the right `id`.",
+      "In templates and components, generate IDs instead of hard-coding them."
+    ],
+    "bad": "<label for=\"email\">Email</label>\n<input id=\"email\">\n<input id=\"email\" type=\"checkbox\">",
+    "good": "<label for=\"email\">Email</label>\n<input id=\"email\">\n<input id=\"newsletter\" type=\"checkbox\">",
+    "wcag": "4.1.2 Name, Role, Value (A): every control must expose a correct name and role to assistive technology. Broken references give it the wrong name."
+  },
+  "empty-heading": {
+    "title": "Empty headings",
+    "inShort": "A heading element (`<h1>` to `<h6>`) has no text a screen reader can read.",
+    "atStake": "Screen-reader users jump from heading to heading to scan a page. An empty heading is announced as \"heading level 2\" followed by silence, which wastes their time and suggests missing content. Headings that only hold an icon or an image without `alt` cause the same problem.",
+    "affects": [
+      "Screen-reader users"
+    ],
+    "analogy": "A table of contents with a chapter number but no chapter name.",
+    "fix": [
+      "Put real text in the heading.",
+      "If the heading contains only an image, give the image an `alt` text.",
+      "If the element is only used for spacing or styling, replace it with a `<div>` or CSS."
+    ],
+    "bad": "<h2><i class=\"icon-star\"></i></h2>",
+    "good": "<h2><i class=\"icon-star\" aria-hidden=\"true\"></i> Featured products</h2>",
+    "wcag": "Best practice, not a WCAG requirement: headings are the main navigation tool for screen-reader users, and empty ones break that navigation."
+  },
+  "empty-table-header": {
+    "title": "Empty table header cells",
+    "inShort": "A `<th>` (or `role=\"columnheader\"` or `role=\"rowheader\"`) has no readable text.",
+    "atStake": "When a screen-reader user moves through a table, the header text is read before each cell value, for example \"Price, 12 EUR\". With an empty header, the cell value is read with no context, and the user has to guess what the number means.",
+    "affects": [
+      "Screen-reader users"
+    ],
+    "analogy": "A spreadsheet with a column of numbers and no column name at the top.",
+    "fix": [
+      "Put descriptive text in each header cell.",
+      "If the header must look empty, add visually hidden text.",
+      "If the cell is not a header (for example the top-left corner), use `<td>` instead of `<th>`."
+    ],
+    "bad": "<tr>\n  <th></th>\n  <th>Price</th>\n</tr>",
+    "good": "<tr>\n  <th>Product</th>\n  <th>Price</th>\n</tr>",
+    "wcag": "Best practice, not a WCAG requirement: header text is what gives every data cell its meaning when the table is read aloud."
+  },
+  "focus-order-semantics": {
+    "title": "Focusable elements that do not look interactive",
+    "inShort": "An element can receive keyboard focus (often via `tabindex=\"0\"`) but has no interactive role, such as a plain `<div>` or `<span>`.",
+    "atStake": "When a keyboard user tabs to it, a screen reader announces only its text, not \"button\" or \"link\". The user does not know it can be activated, or how. Usually it also does not respond to Enter or Space.",
+    "affects": [
+      "Screen-reader users",
+      "Keyboard users"
+    ],
+    "analogy": "A door painted exactly like the wall: you can walk up to it, but nothing tells you it opens.",
+    "fix": [
+      "Use a native element: `<button>` for actions, `<a href>` for navigation.",
+      "If you must keep the `<div>`, add the right `role` and handle Enter and Space in JavaScript.",
+      "If it is not interactive, remove the `tabindex`."
+    ],
+    "bad": "<div tabindex=\"0\" onclick=\"save()\">Save</div>",
+    "good": "<button type=\"button\" onclick=\"save()\">Save</button>",
+    "wcag": "Best practice, not a WCAG requirement: anything a user can tab to should announce what it is, so they know what pressing a key will do."
+  },
+  "form-field-multiple-labels": {
+    "title": "Form fields with several labels",
+    "inShort": "More than one `<label>` element points at the same form field.",
+    "atStake": "Browsers and screen readers handle several labels inconsistently. Some read only the first label, some only the last, some all of them. The user may hear an incomplete or confusing name and fill the field incorrectly.",
+    "affects": [
+      "Screen-reader users",
+      "Voice-control users"
+    ],
+    "analogy": "A drawer with two different stickers on it: which one tells you what is inside?",
+    "fix": [
+      "Keep a single `<label>` per field.",
+      "Move extra information, such as format hints, into text linked with `aria-describedby`."
+    ],
+    "bad": "<label for=\"d\">Date</label>\n<label for=\"d\">DD/MM/YYYY</label>\n<input id=\"d\">",
+    "good": "<label for=\"d\">Date</label>\n<input id=\"d\" aria-describedby=\"d-hint\">\n<span id=\"d-hint\">DD/MM/YYYY</span>",
+    "wcag": "3.3.2 Labels or Instructions (A): fields that need input must have clear labels or instructions."
+  },
+  "frame-focusable-content": {
+    "title": "Frames blocked from keyboard focus",
+    "inShort": "An `<iframe>` or `<frame>` contains links or controls, but has `tabindex=\"-1\"`, which keeps the keyboard out.",
+    "atStake": "Keyboard users move with the Tab key. With `tabindex=\"-1\"` on the frame, some browsers skip it entirely, so its buttons, links and form fields cannot be reached. An embedded video player, map or payment form becomes unusable without a mouse.",
+    "affects": [
+      "Keyboard users",
+      "Screen-reader users"
+    ],
+    "analogy": "A shop with a locked side door that is the only way into one of its departments.",
+    "fix": [
+      "Remove `tabindex=\"-1\"` from the frame.",
+      "If the frame content really should not be used, hide it fully or remove it instead."
+    ],
+    "bad": "<iframe src=\"/payment\" title=\"Payment\" tabindex=\"-1\"></iframe>",
+    "good": "<iframe src=\"/payment\" title=\"Payment\"></iframe>",
+    "wcag": "2.1.1 Keyboard (A): everything that works with a mouse must also work with a keyboard alone."
+  },
+  "frame-tested": {
+    "title": "Frame content not tested",
+    "inShort": "The audit could not look inside an `<iframe>` or `<frame>`, so its content was not checked.",
+    "atStake": "This is not a defect in itself. It means part of the page, often a third-party widget, form or video player, has an unknown accessibility status. Problems inside it affect users exactly as if they were on the main page.",
+    "affects": [
+      "All users of the embedded content"
+    ],
+    "analogy": "A building inspection that skipped one room because the door was locked.",
+    "fix": [
+      "Open the frame source URL directly and audit it as its own page.",
+      "For third-party embeds, check the vendor's accessibility statement or test the widget manually."
+    ],
+    "bad": "<iframe src=\"https://widget.example/chat\" title=\"Chat\"></iframe>",
+    "good": "<!-- Same markup; audit https://widget.example/chat separately -->",
+    "wcag": "Best practice, not a WCAG requirement: content inside a frame counts as part of your page, so it needs testing like the rest."
+  },
+  "frame-title": {
+    "title": "Frames without a name",
+    "inShort": "An `<iframe>` or `<frame>` has no `title` (or `aria-label`) saying what it contains.",
+    "atStake": "When a screen reader reaches the frame, it announces \"frame\" and perhaps the source URL, nothing more. The user cannot decide whether to enter it or skip it, and has to explore it blindly to find out it is a map, an ad or a payment form.",
+    "affects": [
+      "Screen-reader users"
+    ],
+    "analogy": "An unmarked door in a hallway: you only find out what is behind it by walking in.",
+    "fix": [
+      "Add a `title` attribute describing the frame content.",
+      "Keep it short and specific, for example \"Store location map\"."
+    ],
+    "bad": "<iframe src=\"https://maps.example/embed\"></iframe>",
+    "good": "<iframe src=\"https://maps.example/embed\" title=\"Store location map\"></iframe>",
+    "wcag": "4.1.2 Name, Role, Value (A): every component must expose a name to assistive technology."
+  },
+  "frame-title-unique": {
+    "title": "Frames sharing the same title",
+    "inShort": "Several `<iframe>` or `<frame>` elements on the page have the same `title`.",
+    "atStake": "Screen readers announce each frame by its title and can list all frames on the page. If two are both called \"Video\", the user cannot tell which is which before entering, and may have to explore each one to find the right content.",
+    "affects": [
+      "Screen-reader users"
+    ],
+    "analogy": "Two doors in a corridor both labelled \"Office\".",
+    "fix": [
+      "Give each frame a `title` that describes its specific content.",
+      "If two frames really show the same content, consider removing one."
+    ],
+    "bad": "<iframe src=\"a.html\" title=\"Video\"></iframe>\n<iframe src=\"b.html\" title=\"Video\"></iframe>",
+    "good": "<iframe src=\"a.html\" title=\"Video: product demo\"></iframe>\n<iframe src=\"b.html\" title=\"Video: customer interview\"></iframe>",
+    "wcag": "4.1.2 Name, Role, Value (A): every component must expose a name to assistive technology, and that name must identify it."
+  },
+  "heading-order": {
+    "title": "Heading levels that skip a step",
+    "inShort": "A heading jumps more than one level down, for example from `<h2>` straight to `<h4>`.",
+    "atStake": "Screen-reader users rely on heading levels to understand how the page is organised, like an outline. A skipped level makes them think a section is missing or that they misunderstood the structure. It is usually a sign that heading tags were chosen for their size, not their meaning.",
+    "affects": [
+      "Screen-reader users",
+      "People with cognitive disabilities"
+    ],
+    "analogy": "A report that goes from chapter 2 to section 2.1.1 with no section 2.1.",
+    "fix": [
+      "Choose heading levels by structure: each sub-section is one level below its parent.",
+      "Change the visual size with CSS, not by picking a different heading tag."
+    ],
+    "bad": "<h2>Shipping</h2>\n<h4>Delivery times</h4>",
+    "good": "<h2>Shipping</h2>\n<h3>Delivery times</h3>",
+    "wcag": "Best practice, not a WCAG requirement: a consistent heading outline lets screen-reader users understand and navigate the page quickly."
+  },
+  "hidden-content": {
+    "title": "Hidden content not analysed",
+    "inShort": "Some content was hidden when the page was tested, so it could not be checked.",
+    "atStake": "This is not a defect in itself. Menus, tabs, accordions and modals are often hidden until a user opens them. Once shown, they can have the same problems as the rest of the page, and nobody has checked them yet.",
+    "affects": [
+      "All users of the hidden content"
+    ],
+    "analogy": "Inspecting a house with all the cupboards closed: the cupboards may be fine, or not.",
+    "fix": [
+      "Open each menu, tab, accordion and dialog, then test again in that state.",
+      "Check manually that the revealed content can be reached and used with a keyboard and a screen reader."
+    ],
+    "bad": "<div class=\"dropdown\" hidden>\n  <a href=\"/a\">Account</a>\n</div>",
+    "good": "<!-- Open the dropdown, then re-run the audit on its content -->",
+    "wcag": "Best practice, not a WCAG requirement: content that appears after interaction is part of the page and must meet the same requirements."
+  },
+  "html-has-lang": {
+    "title": "Page language not declared",
+    "inShort": "The `<html>` element has no `lang` attribute telling the browser what language the page is in.",
+    "atStake": "Screen readers pick a voice and pronunciation rules from the page language. Without `lang`, they use the user's default language, so a French page read with an English voice sounds like gibberish. Browser translation and hyphenation also guess wrong.",
+    "affects": [
+      "Screen-reader users",
+      "People with cognitive disabilities",
+      "Users of translation tools"
+    ],
+    "analogy": "Handing an English reader a text in Spanish without saying so, and asking them to read it aloud.",
+    "fix": [
+      "Add `lang` to the `<html>` element with the main language of the page, for example `lang=\"en\"`.",
+      "Mark passages in another language with their own `lang`."
+    ],
+    "bad": "<html>",
+    "good": "<html lang=\"en\">",
+    "wcag": "3.1.1 Language of Page (A): the main language of each page must be declared in the code."
+  },
+  "html-lang-valid": {
+    "title": "Invalid page language code",
+    "inShort": "The `lang` attribute on `<html>` contains a value that is not a real language code.",
+    "atStake": "Screen readers cannot match an unknown code like `lang=\"english\"` or `lang=\"xx\"` to a voice. They fall back to a default voice, so the text may be pronounced with the wrong accent and rules, and become hard to understand.",
+    "affects": [
+      "Screen-reader users",
+      "Users of translation tools"
+    ],
+    "analogy": "A label saying \"language: Earthish\": nobody knows which dictionary to use.",
+    "fix": [
+      "Use a valid BCP 47 code such as `en`, `fr`, `de` or `pt-BR`.",
+      "Check for typos and empty values coming from your CMS or template."
+    ],
+    "bad": "<html lang=\"english\">",
+    "good": "<html lang=\"en\">",
+    "wcag": "3.1.1 Language of Page (A): the main language of each page must be declared in the code, with a value software understands."
+  },
+  "html-xml-lang-mismatch": {
+    "title": "Conflicting page language declarations",
+    "inShort": "The `<html>` element has both `lang` and `xml:lang`, and they name different languages.",
+    "atStake": "Different browsers and assistive technologies may read different attributes. One screen reader may use English pronunciation while another uses French, on the same page. The result is unpredictable speech for part of your audience.",
+    "affects": [
+      "Screen-reader users"
+    ],
+    "analogy": "A document stamped \"English\" on the cover and \"French\" on the first page.",
+    "fix": [
+      "Make `lang` and `xml:lang` name the same language.",
+      "Or remove `xml:lang` unless you serve the page as XHTML."
+    ],
+    "bad": "<html lang=\"en\" xml:lang=\"fr\">",
+    "good": "<html lang=\"en\" xml:lang=\"en\">",
+    "wcag": "3.1.1 Language of Page (A): the main language of each page must be declared in the code, and unambiguously."
+  },
+  "image-alt": {
+    "title": "Images without a text alternative",
+    "inShort": "An `<img>` has no `alt` attribute, so there is no text to replace it for people who cannot see it.",
+    "atStake": "A screen reader reaching the image announces its file name, such as \"IMG_4821.jpg\", or just \"image\". If the image carries information (a chart, a product photo, a linked logo), that information is lost. If it is decorative, it still adds noise.",
+    "affects": [
+      "Screen-reader users",
+      "Users with images turned off"
+    ],
+    "analogy": "Someone describing a photo album over the phone who only reads out the file names.",
+    "fix": [
+      "Add an `alt` that says what the image conveys, in a few words.",
+      "For purely decorative images, use an empty `alt=\"\"` so screen readers skip them.",
+      "For linked images, describe where the link goes."
+    ],
+    "bad": "<img src=\"chart-q3.png\">",
+    "good": "<img src=\"chart-q3.png\" alt=\"Sales rose 20% in Q3\">",
+    "wcag": "1.1.1 Non-text Content (A): anything that is not text needs a text equivalent, unless it is purely decorative."
+  },
+  "image-redundant-alt": {
+    "title": "Image text repeated next to it",
+    "inShort": "An image's `alt` text repeats the text right next to it, for example in the same link or button.",
+    "atStake": "Screen readers read both the `alt` and the surrounding text, so the user hears the same words twice, such as \"Contact us, Contact us\". On a page with many such links, the repetition slows navigation and makes the page tiring to listen to.",
+    "affects": [
+      "Screen-reader users"
+    ],
+    "analogy": "A sign that says \"Exit\" with a picture of a sign that says \"Exit\".",
+    "fix": [
+      "If the visible text already says it, give the image `alt=\"\"`.",
+      "Otherwise make the `alt` add something the text does not."
+    ],
+    "bad": "<a href=\"/contact\">\n  <img src=\"mail.svg\" alt=\"Contact us\"> Contact us\n</a>",
+    "good": "<a href=\"/contact\">\n  <img src=\"mail.svg\" alt=\"\"> Contact us\n</a>",
+    "wcag": "Best practice, not a WCAG requirement: duplicate announcements slow screen-reader users down without adding information."
+  },
+  "input-button-name": {
+    "title": "Input buttons without a name",
+    "inShort": "An `<input type=\"button\">`, `\"submit\"` or `\"reset\"` has no text saying what it does.",
+    "atStake": "A screen reader announces just \"button\", with no hint of the action. The user cannot know whether it submits, deletes or cancels, and may avoid it or trigger the wrong action. Voice-control users cannot say its name to click it.",
+    "affects": [
+      "Screen-reader users",
+      "Voice-control users"
+    ],
+    "analogy": "A row of identical unlabelled switches on a wall.",
+    "fix": [
+      "Add a `value` with the visible button text.",
+      "If the button has no visible text, add an `aria-label`."
+    ],
+    "bad": "<input type=\"submit\" value=\"\">",
+    "good": "<input type=\"submit\" value=\"Send message\">",
+    "wcag": "4.1.2 Name, Role, Value (A): every control must expose a name to assistive technology."
+  },
+  "input-image-alt": {
+    "title": "Image buttons without a text alternative",
+    "inShort": "An `<input type=\"image\">` (an image used as a submit button) has no `alt` text.",
+    "atStake": "The screen reader announces \"button\" or the image file name, such as \"btn_go.png\". The user does not know what the button does, and in many forms it is the only way to submit. Voice-control users have no name to say.",
+    "affects": [
+      "Screen-reader users",
+      "Voice-control users",
+      "Users with images turned off"
+    ],
+    "analogy": "A button on a vending machine with a faded picture and no label.",
+    "fix": [
+      "Add an `alt` that names the action, such as \"Search\" or \"Submit order\".",
+      "Describe the action, not the picture."
+    ],
+    "bad": "<input type=\"image\" src=\"go.png\">",
+    "good": "<input type=\"image\" src=\"go.png\" alt=\"Search\">",
+    "wcag": "1.1.1 Non-text Content (A): images need a text equivalent. 4.1.2 Name, Role, Value (A): every control must expose a name."
+  },
+  "label": {
+    "title": "Form fields without a label",
+    "inShort": "A form field (text box, checkbox, select, and so on) has no label that software can read.",
+    "atStake": "A screen reader announces \"edit text, blank\" or \"checkbox, not checked\", with no clue what it is for. The user cannot fill the form reliably. Voice-control users cannot target the field by name, and clicking the text next to it does not focus it.",
+    "affects": [
+      "Screen-reader users",
+      "Voice-control users",
+      "Mouse users clicking labels"
+    ],
+    "analogy": "A form with boxes and no field names: is this one for your name, your phone or your email?",
+    "fix": [
+      "Add a `<label for=\"...\">` whose `for` matches the field's `id`.",
+      "Or wrap the field inside its `<label>`.",
+      "If no visible label is possible, use `aria-label`, but prefer visible text."
+    ],
+    "bad": "<span>Email</span>\n<input type=\"email\" id=\"email\">",
+    "good": "<label for=\"email\">Email</label>\n<input type=\"email\" id=\"email\">",
+    "wcag": "4.1.2 Name, Role, Value (A): every form control must expose a name to assistive technology."
+  },
+  "label-content-name-mismatch": {
+    "title": "Visible label differs from the hidden name",
+    "inShort": "A control's hidden name, usually set with `aria-label`, does not contain the text shown on screen.",
+    "atStake": "Voice-control users click things by saying the words they see, for example \"click Buy now\". If the code names the button \"Add item to basket\", the command fails. Screen-reader users who can partly see the screen also hear something different from what they read.",
+    "affects": [
+      "Voice-control users",
+      "Screen-reader users",
+      "People with cognitive disabilities"
+    ],
+    "analogy": "A shop assistant whose badge says \"Anna\" but who only answers to \"Maria\".",
+    "fix": [
+      "Make the accessible name start with, or at least contain, the visible text.",
+      "Often the simplest fix is to remove the `aria-label` and let the visible text be the name."
+    ],
+    "bad": "<button aria-label=\"Add item to basket\">Buy now</button>",
+    "good": "<button aria-label=\"Buy now: Red scarf\">Buy now</button>",
+    "wcag": "2.5.3 Label in Name (A, WCAG 2.1): the name software uses for a control must include the text people see on it."
+  },
+  "label-title-only": {
+    "title": "Form fields without a visible label",
+    "inShort": "A form field is named only by a `title` tooltip, `aria-describedby`, or hidden text, with no label on screen.",
+    "atStake": "Sighted users see an empty box and must guess what to type, especially once a placeholder disappears. Tooltips do not show on touch screens or for keyboard users. People with memory or attention difficulties lose track of what each field was for.",
+    "affects": [
+      "People with cognitive disabilities",
+      "Low-vision users",
+      "Keyboard users",
+      "Touch-screen users"
+    ],
+    "analogy": "A paper form with blank boxes, where the field names only appear if you hover a finger over them.",
+    "fix": [
+      "Add a visible `<label>` linked to the field with `for` and `id`.",
+      "Keep `title` only for extra hints, not as the only name."
+    ],
+    "bad": "<input type=\"text\" title=\"Postcode\">",
+    "good": "<label for=\"pc\">Postcode</label>\n<input type=\"text\" id=\"pc\">",
+    "wcag": "Best practice, not a WCAG requirement: a visible, persistent label is the only kind every user can see at all times."
+  },
+  "landmark-banner-is-top-level": {
+    "title": "Page header nested inside another region",
+    "inShort": "The site header region (`role=\"banner\"`, usually the top `<header>`) sits inside another landmark such as `<main>`.",
+    "atStake": "Screen-reader users jump between page regions (header, navigation, main, footer) from a list. A banner nested inside main makes the structure confusing: the site header appears to be part of the page content, and the region list no longer matches the page layout.",
+    "affects": [
+      "Screen-reader users"
+    ],
+    "analogy": "A building directory listing the lobby as a room inside the third floor.",
+    "fix": [
+      "Move the site `<header>` out of `<main>`, `<aside>` or other landmarks so it is a direct part of `<body>`.",
+      "Keep headers of articles or sections inside them; those are not banners."
+    ],
+    "bad": "<main>\n  <header>Site logo, menu</header>\n</main>",
+    "good": "<header>Site logo, menu</header>\n<main>...</main>",
+    "wcag": "Best practice, not a WCAG requirement: a clean region structure lets screen-reader users jump straight to the part of the page they want."
+  },
+  "landmark-contentinfo-is-top-level": {
+    "title": "Page footer nested inside another region",
+    "inShort": "The site footer region (`role=\"contentinfo\"`, usually the bottom `<footer>`) sits inside another landmark.",
+    "atStake": "Screen-reader users jump to the footer to find contact details, legal links or the sitemap. When it is nested inside main or another region, it is no longer presented as the page footer, and the region list no longer reflects the page.",
+    "affects": [
+      "Screen-reader users"
+    ],
+    "analogy": "A book whose index is printed in the middle of chapter 4.",
+    "fix": [
+      "Move the site `<footer>` out of `<main>` and other landmarks so it is a direct part of `<body>`.",
+      "Footers of articles or sections can stay inside them."
+    ],
+    "bad": "<main>\n  ...\n  <footer role=\"contentinfo\">Contact, legal</footer>\n</main>",
+    "good": "<main>...</main>\n<footer>Contact, legal</footer>",
+    "wcag": "Best practice, not a WCAG requirement: a clean region structure lets screen-reader users jump straight to the part of the page they want."
+  },
+  "landmark-main-is-top-level": {
+    "title": "Main content nested inside another region",
+    "inShort": "The `<main>` region (or `role=\"main\"`) sits inside another landmark such as `<aside>` or `<nav>`.",
+    "atStake": "Screen-reader users press one key to jump to the main content and skip menus. If `<main>` is nested inside a sidebar or navigation region, the structure tells them the main content is part of that sidebar, which is misleading.",
+    "affects": [
+      "Screen-reader users"
+    ],
+    "analogy": "A newspaper that prints its front-page story inside the classified ads.",
+    "fix": [
+      "Move `<main>` so it is not inside any other landmark.",
+      "Place `<header>`, `<nav>`, `<main>` and `<footer>` side by side under `<body>`."
+    ],
+    "bad": "<aside>\n  <main>Article</main>\n</aside>",
+    "good": "<main>Article</main>\n<aside>Related links</aside>",
+    "wcag": "Best practice, not a WCAG requirement: a clean region structure lets screen-reader users jump straight to the main content."
+  },
+  "landmark-no-duplicate-banner": {
+    "title": "More than one page header region",
+    "inShort": "The page has several banner landmarks, usually several top-level `<header>` elements or `role=\"banner\"`.",
+    "atStake": "A page should have one site header. With two, screen-reader users jumping to \"banner\" land on the wrong one, or are unsure which holds the site navigation. The region list shows duplicates with no way to tell them apart.",
+    "affects": [
+      "Screen-reader users"
+    ],
+    "analogy": "A letter with two letterheads from two different companies.",
+    "fix": [
+      "Keep one site-wide `<header>` directly under `<body>`.",
+      "Remove extra `role=\"banner\"`, or move other headers inside `<article>` or `<section>`, where they are not banners."
+    ],
+    "bad": "<header>Logo</header>\n<header>Promo bar</header>",
+    "good": "<header>Logo</header>\n<div class=\"promo\">Promo bar</div>",
+    "wcag": "Best practice, not a WCAG requirement: one header region makes it unambiguous where the site header is."
+  },
+  "landmark-no-duplicate-contentinfo": {
+    "title": "More than one page footer region",
+    "inShort": "The page has several contentinfo landmarks, usually several top-level `<footer>` elements or `role=\"contentinfo\"`.",
+    "atStake": "A page should have one site footer. With two, screen-reader users jumping to the footer may land on the wrong one and miss the contact or legal information they were looking for.",
+    "affects": [
+      "Screen-reader users"
+    ],
+    "analogy": "A book with two different indexes, one in the middle and one at the end.",
+    "fix": [
+      "Keep one site-wide `<footer>` directly under `<body>`.",
+      "Remove extra `role=\"contentinfo\"`, or move other footers inside `<article>` or `<section>`."
+    ],
+    "bad": "<footer>Newsletter</footer>\n<footer>Contact, legal</footer>",
+    "good": "<section>Newsletter</section>\n<footer>Contact, legal</footer>",
+    "wcag": "Best practice, not a WCAG requirement: one footer region makes it unambiguous where site-wide information lives."
+  },
+  "landmark-no-duplicate-main": {
+    "title": "More than one main content region",
+    "inShort": "The page has several `<main>` elements or `role=\"main\"` regions visible at once.",
+    "atStake": "Screen-reader users jump to \"main\" to skip menus and go straight to the content. With two main regions, they land on one and may never find the other, or cannot tell which is the actual content.",
+    "affects": [
+      "Screen-reader users"
+    ],
+    "analogy": "A museum map with two spots marked \"You are here\".",
+    "fix": [
+      "Keep a single `<main>` per page.",
+      "Turn the extra ones into `<section>` or `<div>`.",
+      "If you use several for routing, hide all but one with the `hidden` attribute."
+    ],
+    "bad": "<main>Article</main>\n<main>Comments</main>",
+    "good": "<main>\n  Article\n  <section>Comments</section>\n</main>",
+    "wcag": "Best practice, not a WCAG requirement: one main region gives screen-reader users a single, reliable shortcut to the content."
+  },
+  "landmark-one-main": {
+    "title": "No main content region",
+    "inShort": "The page has no `<main>` element (or `role=\"main\"`) marking where the main content starts.",
+    "atStake": "Screen-reader users normally press one key to jump to the main content. Without `<main>`, that shortcut does nothing, and they must listen through the header and navigation on every page to reach the content.",
+    "affects": [
+      "Screen-reader users",
+      "Keyboard users"
+    ],
+    "analogy": "A book with no table of contents and no page numbers: you flip until you find chapter 1.",
+    "fix": [
+      "Wrap the primary content of the page in one `<main>` element.",
+      "Leave the site header, navigation and footer outside it."
+    ],
+    "bad": "<body>\n  <nav>...</nav>\n  <div class=\"content\">...</div>\n</body>",
+    "good": "<body>\n  <nav>...</nav>\n  <main>...</main>\n</body>",
+    "wcag": "Best practice, not a WCAG requirement: a main region is the fastest way for screen-reader users to skip repeated menus."
+  },
+  "landmark-unique": {
+    "title": "Page regions with the same name",
+    "inShort": "Two landmarks of the same type, such as two `<nav>` elements, have no distinct label.",
+    "atStake": "Screen readers list regions by type and label. Two entries both called \"navigation\" give the user no way to know which is the main menu and which is the footer menu, so they must enter each one to find out.",
+    "affects": [
+      "Screen-reader users"
+    ],
+    "analogy": "Two lifts in a lobby, both labelled just \"Lift\", one of which skips half the floors.",
+    "fix": [
+      "Give each landmark of the same type a distinct `aria-label` or `aria-labelledby`.",
+      "Do not repeat the type in the label: \"Main\", not \"Main navigation\"."
+    ],
+    "bad": "<nav>Main links</nav>\n<nav>Footer links</nav>",
+    "good": "<nav aria-label=\"Main\">Main links</nav>\n<nav aria-label=\"Footer\">Footer links</nav>",
+    "wcag": "Best practice, not a WCAG requirement: distinct region names let screen-reader users go straight to the right one."
+  },
+  "link-in-text-block": {
+    "title": "Links identified by colour alone",
+    "inShort": "A link inside a paragraph differs from the surrounding text only by its colour, with no underline or other visual cue.",
+    "atStake": "People who are colour-blind or have low vision may not see the colour difference, so the link looks like ordinary text. They miss it entirely, or have to hover over every word to find it. Greyscale displays and bright sunlight make it worse.",
+    "affects": [
+      "Colour-blind users",
+      "Low-vision users"
+    ],
+    "analogy": "A map where the roads differ from the rivers only by a slightly different shade of blue.",
+    "fix": [
+      "Underline links in body text (the browser default).",
+      "Or ensure a contrast of at least 3:1 between link and text colour, plus an underline or other cue on hover and focus."
+    ],
+    "bad": "p a { color: #1a5fb4; text-decoration: none; }",
+    "good": "p a { color: #1a5fb4; text-decoration: underline; }",
+    "wcag": "1.4.1 Use of Color (A): colour must not be the only way information is shown."
+  },
+  "link-name": {
+    "title": "Links with no readable name",
+    "inShort": "A link has no text that assistive technology can read, so nobody can tell where it goes.",
+    "atStake": "A screen reader announces just \"link\", or reads the raw URL. Users who list all links on a page to navigate get a row of identical, meaningless entries. Voice-control users cannot say the link's name to click it.",
+    "affects": [
+      "Screen-reader users",
+      "Voice-control users"
+    ],
+    "analogy": "A row of unlabelled doors in a corridor: you have to open each one to find out what is behind it.",
+    "fix": [
+      "Put visible text inside the `<a>`.",
+      "For an icon-only link, give the icon `alt` text or add `aria-label` to the link.",
+      "Describe the destination, not the action (\"Pricing\", not \"Click here\")."
+    ],
+    "bad": "<a href=\"/cart\"><svg>...</svg></a>",
+    "good": "<a href=\"/cart\" aria-label=\"Shopping cart\"><svg aria-hidden=\"true\">...</svg></a>",
+    "wcag": "2.4.4 Link Purpose (A): the purpose of each link must be clear from its text or context. 4.1.2 Name, Role, Value (A): every control needs a name software can read."
+  },
+  "list": {
+    "title": "Lists containing things that are not items",
+    "inShort": "A `<ul>` or `<ol>` directly contains elements other than `<li>`, so the list structure is broken.",
+    "atStake": "Screen readers announce \"list, 5 items\" so users know what to expect and can skip it. When `<div>` or `<p>` sit directly inside the list, the item count is wrong or the list is not announced as a list at all. Users lose the overview and cannot jump between items.",
+    "affects": [
+      "Screen-reader users"
+    ],
+    "analogy": "A numbered shopping list where some lines are scribbles between the numbers, so you cannot tell how many things to buy.",
+    "fix": [
+      "Make every direct child of `<ul>`/`<ol>` an `<li>`.",
+      "Move wrappers like `<div>` inside the `<li>`, not around it.",
+      "If the content is not a list, do not use `<ul>`/`<ol>`."
+    ],
+    "bad": "<ul>\n  <div><li>Home</li></div>\n  <p>About</p>\n</ul>",
+    "good": "<ul>\n  <li><div>Home</div></li>\n  <li>About</li>\n</ul>",
+    "wcag": "1.3.1 Info and Relationships (A): structure that is visible (a list, a table, a heading) must also be present in the code, so software can convey it."
+  },
+  "listitem": {
+    "title": "List items outside a list",
+    "inShort": "An `<li>` is not inside a `<ul>` or `<ol>`, so it is not part of any list.",
+    "atStake": "Screen readers rely on the parent list to announce \"list, 4 items\" and \"item 2 of 4\". An orphan `<li>` gets no list context: users do not know they are in a group of related items or how many there are, and cannot skip past it.",
+    "affects": [
+      "Screen-reader users"
+    ],
+    "analogy": "A page torn out of a numbered manual: \"step 3\" means nothing without the steps around it.",
+    "fix": [
+      "Wrap the `<li>` elements in a `<ul>` or `<ol>`.",
+      "If a framework component renders `<li>` on its own, make sure its parent renders the list element.",
+      "If it is not a list item, use a different element."
+    ],
+    "bad": "<div>\n  <li>Settings</li>\n  <li>Logout</li>\n</div>",
+    "good": "<ul>\n  <li>Settings</li>\n  <li>Logout</li>\n</ul>",
+    "wcag": "1.3.1 Info and Relationships (A): structure that is visible (a list, a table, a heading) must also be present in the code, so software can convey it."
+  },
+  "marquee": {
+    "title": "Scrolling marquee text",
+    "inShort": "The page uses the obsolete `<marquee>` element, which makes text scroll across the screen with no way to stop it.",
+    "atStake": "Moving text is hard or impossible to read for people with low vision, dyslexia or attention disorders, who need time and stillness. Constant motion pulls attention away from the rest of the page. `<marquee>` offers no pause button, and screen readers handle it inconsistently.",
+    "affects": [
+      "Users with low vision",
+      "Users with reading or attention disorders",
+      "Users with cognitive disabilities"
+    ],
+    "analogy": "Trying to read a sign stuck to the side of a passing bus.",
+    "fix": [
+      "Remove `<marquee>` and show the text statically.",
+      "If motion is essential, build it with CSS and provide a visible pause control.",
+      "Respect `prefers-reduced-motion` for any animation."
+    ],
+    "bad": "<marquee>Free shipping on all orders</marquee>",
+    "good": "<p>Free shipping on all orders</p>",
+    "wcag": "2.2.2 Pause, Stop, Hide (A): content that moves or scrolls automatically for more than 5 seconds must have a way to pause, stop or hide it."
+  },
+  "meta-refresh": {
+    "title": "Page refreshes or redirects on a timer",
+    "inShort": "A `<meta http-equiv=\"refresh\">` reloads or redirects the page after a delay, without the user asking.",
+    "atStake": "The page changes before slow readers, screen-reader users or people filling in a form are done. A screen reader restarts from the top after a reload, so the user loses their place. Typed input can be lost.",
+    "affects": [
+      "Screen-reader users",
+      "Users who read slowly",
+      "Users with cognitive disabilities",
+      "Users with motor disabilities"
+    ],
+    "analogy": "Someone turning the page of your book every 30 seconds, whether you have finished or not.",
+    "fix": [
+      "Remove the timed refresh.",
+      "For a redirect, use a server-side HTTP redirect (301/302) with no delay.",
+      "For updating content, let the user trigger it, or update only the changed part with JavaScript."
+    ],
+    "bad": "<meta http-equiv=\"refresh\" content=\"30\">",
+    "good": "<!-- removed; offer a button instead -->\n<button type=\"button\">Refresh results</button>",
+    "wcag": "2.2.1 Timing Adjustable (A): users must be able to turn off, adjust or extend any time limit the page imposes on them."
+  },
+  "meta-viewport": {
+    "title": "Zooming disabled on mobile",
+    "inShort": "The viewport tag blocks pinch-to-zoom, with `user-scalable=no` or a `maximum-scale` below 2.",
+    "atStake": "People with low vision rely on zoom to read text on a phone. With zoom blocked, small text stays small and they cannot read it. Many cannot use the site on mobile at all.",
+    "affects": [
+      "Users with low vision",
+      "Older users",
+      "Mobile users"
+    ],
+    "analogy": "A restaurant menu glued behind glass so you cannot bring it closer to your eyes.",
+    "fix": [
+      "Remove `user-scalable=no`.",
+      "Remove `maximum-scale`, or set it to at least 2 (5 is better).",
+      "Fix layout bugs that zoom exposes instead of blocking zoom."
+    ],
+    "bad": "<meta name=\"viewport\" content=\"width=device-width, user-scalable=no\">",
+    "good": "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">",
+    "wcag": "1.4.4 Resize Text (AA): text must be resizable up to 200% without losing content or function."
+  },
+  "meta-viewport-large": {
+    "title": "Zoom limited to a small maximum",
+    "inShort": "The viewport tag caps how far the page can be zoomed on mobile, below 500%.",
+    "atStake": "On phones, people with low vision pinch to zoom until text is big enough to read. A `maximum-scale` such as 2 stops them halfway. Some can then not read the page at all on that device.",
+    "affects": [
+      "Users with low vision",
+      "Mobile users"
+    ],
+    "analogy": "A magnifying glass that stops working just before the small print becomes readable.",
+    "fix": [
+      "Remove `maximum-scale` from the viewport `<meta>`.",
+      "If you must keep it, set it to 5 or more."
+    ],
+    "bad": "<meta name=\"viewport\" content=\"width=device-width, maximum-scale=2\">",
+    "good": "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">",
+    "wcag": "Best practice, not a WCAG requirement: WCAG only requires 200% text resize, but many low-vision users need much more zoom on small screens."
+  },
+  "nested-interactive": {
+    "title": "Clickable controls nested inside each other",
+    "inShort": "An interactive element, such as a button or link, sits inside another interactive element.",
+    "atStake": "Screen readers often announce only the outer control and skip the inner one, so the inner action is invisible to them. Keyboard focus can land on the outer control, the inner one, or both, inconsistently. Clicks may trigger the wrong action.",
+    "affects": [
+      "Screen-reader users",
+      "Keyboard users"
+    ],
+    "analogy": "A light switch built inside another light switch: you cannot press one without guessing which lamp you will get.",
+    "fix": [
+      "Place the controls side by side instead of one inside the other.",
+      "For a clickable card, make one link the main target and keep other buttons outside it.",
+      "Do not put links or buttons inside an element with `role=\"button\"`."
+    ],
+    "bad": "<a href=\"/post/1\">\n  Post title <button>Save</button>\n</a>",
+    "good": "<a href=\"/post/1\">Post title</a>\n<button>Save</button>",
+    "wcag": "4.1.2 Name, Role, Value (A): every control must expose its name and role to assistive technology, which nesting prevents."
+  },
+  "no-autoplay-audio": {
+    "title": "Audio that plays automatically",
+    "inShort": "A `<video>` or `<audio>` element starts playing sound on its own for more than 3 seconds, with no way to stop it.",
+    "atStake": "Screen-reader users hear the page audio on top of their screen reader's voice and may not be able to hear enough to find the stop button. Autoplaying sound also distresses people with some cognitive or sensory conditions.",
+    "affects": [
+      "Screen-reader users",
+      "Users with cognitive disabilities",
+      "Users with hearing aids"
+    ],
+    "analogy": "Someone turning on a radio next to you while you are on the phone, and hiding the off switch.",
+    "fix": [
+      "Remove `autoplay`, or add `muted` along with it.",
+      "Add `controls` so users can pause and change volume.",
+      "Keep any unavoidable autoplay sound under 3 seconds."
+    ],
+    "bad": "<video src=\"promo.mp4\" autoplay></video>",
+    "good": "<video src=\"promo.mp4\" controls></video>",
+    "wcag": "1.4.2 Audio Control (A): audio that plays automatically for more than 3 seconds must have a way to pause, stop or lower its volume separately from the system."
+  },
+  "object-alt": {
+    "title": "Embedded objects without a text alternative",
+    "inShort": "An `<object>` element embeds content, such as a PDF, chart or plugin, but has no text describing it.",
+    "atStake": "Screen readers announce \"object\" or nothing at all, so users do not know what the embedded content is. If the content cannot load, sighted users also see an empty area with no explanation.",
+    "affects": [
+      "Screen-reader users",
+      "Users whose browser cannot display the object"
+    ],
+    "analogy": "A sealed box on a shelf with no label.",
+    "fix": [
+      "Add an `aria-label` or `title` that describes the content.",
+      "Put fallback text, ideally with a link to the file, inside the `<object>`."
+    ],
+    "bad": "<object data=\"report.pdf\" type=\"application/pdf\"></object>",
+    "good": "<object data=\"report.pdf\" type=\"application/pdf\" aria-label=\"2025 annual report\">\n  <a href=\"report.pdf\">Download the 2025 annual report (PDF)</a>\n</object>",
+    "wcag": "1.1.1 Non-text Content (A): anything that is not text needs a text equivalent."
+  },
+  "p-as-heading": {
+    "title": "Paragraphs styled to look like headings",
+    "inShort": "A `<p>` is made bold or large so it looks like a heading, but it is not marked up as one.",
+    "atStake": "Screen-reader users navigate pages by jumping from heading to heading, like scanning a table of contents. A fake heading is invisible to that navigation, so whole sections are missed. The visual structure exists only for sighted users.",
+    "affects": [
+      "Screen-reader users"
+    ],
+    "analogy": "A book whose chapter titles are printed in bold but missing from the table of contents.",
+    "fix": [
+      "Replace the styled `<p>` with `<h2>`, `<h3>` and so on, matching the outline of the page.",
+      "Move the styling to CSS on the heading element."
+    ],
+    "bad": "<p style=\"font-size:1.5em; font-weight:bold\">Shipping</p>",
+    "good": "<h2>Shipping</h2>",
+    "wcag": "1.3.1 Info and Relationships (A): structure that is visible (a list, a table, a heading) must also be present in the code, so software can convey it."
+  },
+  "page-has-heading-one": {
+    "title": "Page has no main heading",
+    "inShort": "The page has no `<h1>`, so there is no top-level heading saying what the page is about.",
+    "atStake": "Screen-reader users often press a key to jump straight to the `<h1>` and find the main content. Without it they land nowhere and must listen through navigation to work out what the page is. The heading outline also has no clear top.",
+    "affects": [
+      "Screen-reader users"
+    ],
+    "analogy": "A newspaper page with articles but no headline.",
+    "fix": [
+      "Add one `<h1>` that names the page's main content.",
+      "Place it at the start of the main content, usually inside `<main>`."
+    ],
+    "bad": "<main>\n  <div class=\"title\">Order history</div>\n</main>",
+    "good": "<main>\n  <h1>Order history</h1>\n</main>",
+    "wcag": "Best practice, not a WCAG requirement: a single `<h1>` gives screen-reader users a reliable shortcut to the start of the main content."
+  },
+  "presentation-role-conflict": {
+    "title": "Decorative elements that are still announced",
+    "inShort": "An element is marked as decorative with `role=\"none\"` or `role=\"presentation\"`, but also has attributes that cancel that.",
+    "atStake": "Adding `tabindex` or global ARIA attributes such as `aria-label` forces browsers to ignore the decorative role. Some screen readers then announce the element and others do not. Keyboard users may tab to an element that does nothing.",
+    "affects": [
+      "Screen-reader users",
+      "Keyboard users"
+    ],
+    "analogy": "A sign saying \"ignore this sign\" that also has a phone number on it.",
+    "fix": [
+      "If the element is decorative, remove `tabindex` and ARIA attributes from it.",
+      "If it carries meaning, remove `role=\"none\"`/`role=\"presentation\"` and give it a proper role and name."
+    ],
+    "bad": "<img src=\"divider.png\" role=\"presentation\" aria-label=\"divider\">",
+    "good": "<img src=\"divider.png\" alt=\"\">",
+    "wcag": "Best practice, not a WCAG requirement: conflicting signals make screen readers behave inconsistently, so users get a different page depending on their tools."
+  },
+  "region": {
+    "title": "Content outside any page region",
+    "inShort": "Some content is not inside a landmark such as `<header>`, `<nav>`, `<main>` or `<footer>`.",
+    "atStake": "Screen-reader users jump between landmarks to move quickly through a page, for example straight to the main content or the navigation. Content outside any landmark is skipped by that navigation and can only be found by reading everything line by line.",
+    "affects": [
+      "Screen-reader users"
+    ],
+    "analogy": "A shop where some products sit in the corridor instead of on a labelled aisle.",
+    "fix": [
+      "Wrap the page in `<header>`, `<nav>`, `<main>` and `<footer>` as appropriate.",
+      "Move stray content, such as banners or notices, into one of those regions.",
+      "Use `<aside>` or `<section aria-label=\"...\">` for distinct side content."
+    ],
+    "bad": "<body>\n  <div class=\"promo\">Sale ends today</div>\n  <main>...</main>\n</body>",
+    "good": "<body>\n  <header><div class=\"promo\">Sale ends today</div></header>\n  <main>...</main>\n</body>",
+    "wcag": "Best practice, not a WCAG requirement: landmarks are the fastest way for screen-reader users to move around a page, and content outside them is easy to miss."
+  },
+  "role-img-alt": {
+    "title": "Image elements without a text alternative",
+    "inShort": "An element with `role=\"img\"` has no text describing the image.",
+    "atStake": "`role=\"img\"` tells screen readers \"this is an image\". Without a name, they announce just \"image\" and the user has no idea what it shows. If the image carries information, such as a rating or a chart, that information is lost.",
+    "affects": [
+      "Screen-reader users"
+    ],
+    "analogy": "A museum label that reads only \"painting\".",
+    "fix": [
+      "Add `aria-label` describing what the image conveys.",
+      "Or point `aria-labelledby` at visible text that describes it.",
+      "If the image is purely decorative, remove `role=\"img\"` and hide it with `aria-hidden=\"true\"`."
+    ],
+    "bad": "<div role=\"img\" class=\"stars-4\"></div>",
+    "good": "<div role=\"img\" class=\"stars-4\" aria-label=\"Rated 4 out of 5\"></div>",
+    "wcag": "1.1.1 Non-text Content (A): anything that is not text needs a text equivalent."
+  },
+  "scope-attr-valid": {
+    "title": "Table header scope used incorrectly",
+    "inShort": "The `scope` attribute is on the wrong element, or has a value other than `row`, `col`, `rowgroup` or `colgroup`.",
+    "atStake": "Screen readers use `scope` to know which data cells a header describes, and read that header when a user moves through the table. An invalid `scope` is ignored or misread, so cells are announced without their header, or with the wrong one.",
+    "affects": [
+      "Screen-reader users"
+    ],
+    "analogy": "A spreadsheet where the column titles point at the wrong columns.",
+    "fix": [
+      "Use `scope` only on `<th>` elements.",
+      "Set it to `col` for column headers and `row` for row headers.",
+      "Remove `scope` from `<td>` elements."
+    ],
+    "bad": "<td scope=\"column\">Price</td>",
+    "good": "<th scope=\"col\">Price</th>",
+    "wcag": "Best practice, not a WCAG requirement: correct `scope` lets screen readers pair each cell with its header, which is how users make sense of a table."
+  },
+  "scrollable-region-focusable": {
+    "title": "Scrollable areas the keyboard cannot reach",
+    "inShort": "A box with its own scrollbar cannot receive keyboard focus, so its content cannot be scrolled without a mouse.",
+    "atStake": "Keyboard users scroll with the arrow keys, but only inside an element that has focus. If the scrollable box and its contents are not focusable, the hidden part of the content is out of reach. They cannot read the rest of the text or table.",
+    "affects": [
+      "Keyboard users",
+      "Users with motor disabilities"
+    ],
+    "analogy": "A filing drawer with no handle: you can see it holds papers but cannot pull it open.",
+    "fix": [
+      "Add `tabindex=\"0\"` to the scrollable element.",
+      "Give it a name with `aria-label` and a suitable `role`, such as `region`.",
+      "Or avoid fixed heights so the content does not need its own scrollbar."
+    ],
+    "bad": "<div style=\"height:200px; overflow:auto\">Long terms text...</div>",
+    "good": "<div style=\"height:200px; overflow:auto\" tabindex=\"0\" role=\"region\" aria-label=\"Terms\">Long terms text...</div>",
+    "wcag": "2.1.1 Keyboard (A): everything must be usable with a keyboard alone. 2.1.3 Keyboard, No Exception (AAA): with no exceptions at all."
+  },
+  "select-name": {
+    "title": "Drop-down menus without a label",
+    "inShort": "A `<select>` has no label, so assistive technology cannot say what it is for.",
+    "atStake": "A screen reader announces \"combo box\" and the current value, but not the question being asked. A user hearing \"combo box, Medium\" does not know if it is about size, priority or speed. Voice-control users cannot refer to it by name.",
+    "affects": [
+      "Screen-reader users",
+      "Voice-control users"
+    ],
+    "analogy": "A form with answer boxes but the questions erased.",
+    "fix": [
+      "Add a `<label for=\"...\">` that matches the `id` of the `<select>`.",
+      "Or wrap the `<select>` in the `<label>`.",
+      "Use `aria-label` only if no visible label is possible."
+    ],
+    "bad": "<select id=\"size\">\n  <option>Medium</option>\n</select>",
+    "good": "<label for=\"size\">Size</label>\n<select id=\"size\">\n  <option>Medium</option>\n</select>",
+    "wcag": "4.1.2 Name, Role, Value (A): every form control needs a name that software can read."
+  },
+  "server-side-image-map": {
+    "title": "Clickable image regions handled by the server",
+    "inShort": "An image uses `ismap`, so the click position is sent to the server to decide where to go.",
+    "atStake": "Only a mouse click produces coordinates, so keyboard users cannot activate any of the regions. Screen readers cannot tell what the regions are or where they lead, because that information lives on the server.",
+    "affects": [
+      "Keyboard users",
+      "Screen-reader users",
+      "Users with motor disabilities"
+    ],
+    "analogy": "A map where you must point at the exact spot with your finger, and nobody tells you what the spots are.",
+    "fix": [
+      "Replace the server-side map with ordinary links.",
+      "If you need clickable regions on an image, use a client-side `<map>` with `<area>` elements, each with `alt` text."
+    ],
+    "bad": "<a href=\"/map\"><img src=\"regions.png\" ismap alt=\"Regions\"></a>",
+    "good": "<ul>\n  <li><a href=\"/north\">North</a></li>\n  <li><a href=\"/south\">South</a></li>\n</ul>",
+    "wcag": "2.1.1 Keyboard (A): everything must be usable with a keyboard alone."
+  },
+  "skip-link": {
+    "title": "Skip link that goes nowhere",
+    "inShort": "A \"skip to content\" link points to an `id` that does not exist or cannot receive focus.",
+    "atStake": "Skip links let keyboard and screen-reader users jump past the navigation straight to the main content. When the target is missing, activating the link does nothing. Users must tab through every menu item on every page.",
+    "affects": [
+      "Keyboard users",
+      "Screen-reader users"
+    ],
+    "analogy": "An express lane sign that leads to a wall.",
+    "fix": [
+      "Make sure an element with the matching `id` exists on the page.",
+      "If the target is not focusable, such as a `<main>`, add `tabindex=\"-1\"` to it.",
+      "Check the link's `href` spelling matches the `id`."
+    ],
+    "bad": "<a href=\"#content\">Skip to content</a>\n<main id=\"main\">...</main>",
+    "good": "<a href=\"#main\">Skip to content</a>\n<main id=\"main\" tabindex=\"-1\">...</main>",
+    "wcag": "Best practice, not a WCAG requirement: a broken skip link removes the bypass that 2.4.1 Bypass Blocks expects, and users assume it works."
+  },
+  "summary-name": {
+    "title": "Expandable sections without a readable name",
+    "inShort": "A `<summary>`, the clickable header of a `<details>` section, has no text.",
+    "atStake": "A screen reader announces just \"button, collapsed\" or the browser's generic \"Details\". Users cannot tell what the section contains and must open each one to find out. Voice-control users cannot name it to open it.",
+    "affects": [
+      "Screen-reader users",
+      "Voice-control users"
+    ],
+    "analogy": "A row of closed folders with blank tabs.",
+    "fix": [
+      "Put descriptive text inside the `<summary>`.",
+      "If it shows only an icon, add `aria-label` to the `<summary>` or visually hidden text inside it."
+    ],
+    "bad": "<details>\n  <summary><svg>...</svg></summary>\n  Refunds take 5 days.\n</details>",
+    "good": "<details>\n  <summary>Refund policy</summary>\n  Refunds take 5 days.\n</details>",
+    "wcag": "4.1.2 Name, Role, Value (A): every control needs a name that software can read."
+  },
+  "svg-img-alt": {
+    "title": "SVG images without a text alternative",
+    "inShort": "An `<svg>` is marked as an image with `role=\"img\"` but has no text describing it.",
+    "atStake": "Screen readers announce \"image\" and nothing more. If the SVG is a logo, a chart or an icon that carries meaning, the user misses that information completely.",
+    "affects": [
+      "Screen-reader users"
+    ],
+    "analogy": "A road sign with the symbol painted over.",
+    "fix": [
+      "Add a `<title>` as the first child of the `<svg>`.",
+      "Or add `aria-label` to the `<svg>`.",
+      "If it is decorative, remove `role=\"img\"` and add `aria-hidden=\"true\"`."
+    ],
+    "bad": "<svg role=\"img\" viewBox=\"0 0 24 24\">...</svg>",
+    "good": "<svg role=\"img\" viewBox=\"0 0 24 24\">\n  <title>Warning</title>...\n</svg>",
+    "wcag": "1.1.1 Non-text Content (A): anything that is not text needs a text equivalent."
+  },
+  "tabindex": {
+    "title": "Custom tab order with positive tabindex",
+    "inShort": "An element has `tabindex` greater than 0, which forces it to the front of the keyboard tab order.",
+    "atStake": "Keyboard users press Tab to move through a page in reading order. A positive `tabindex` makes focus jump to that element first, then back to the top, in an order that does not match what is on screen. Users get lost and skip content.",
+    "affects": [
+      "Keyboard users",
+      "Screen-reader users"
+    ],
+    "analogy": "A book where page 47 is bound in before page 1.",
+    "fix": [
+      "Change positive values to `tabindex=\"0\"`, or remove the attribute.",
+      "Fix the order by rearranging the HTML so source order matches visual order."
+    ],
+    "bad": "<input name=\"search\" tabindex=\"1\">",
+    "good": "<input name=\"search\">",
+    "wcag": "Best practice, not a WCAG requirement: positive `tabindex` almost always breaks 2.4.3 Focus Order, and the order is hard to maintain."
+  },
+  "table-duplicate-name": {
+    "title": "Table caption and summary say the same thing",
+    "inShort": "A table's `<caption>` and its `summary` attribute contain identical text.",
+    "atStake": "Screen readers read both, so users hear the same sentence twice before reaching the data. The `summary` is meant to explain how the table is organised; repeating the caption wastes it.",
+    "affects": [
+      "Screen-reader users"
+    ],
+    "analogy": "A presenter who reads the slide title out loud twice before every slide.",
+    "fix": [
+      "Keep the title in `<caption>`.",
+      "Remove the `summary` attribute, which is obsolete in HTML5.",
+      "If the table's structure needs explaining, put that in text near the table."
+    ],
+    "bad": "<table summary=\"Opening hours\">\n  <caption>Opening hours</caption>",
+    "good": "<table>\n  <caption>Opening hours</caption>",
+    "wcag": "Best practice, not a WCAG requirement: duplicate announcements add noise and slow screen-reader users down."
+  },
+  "table-fake-caption": {
+    "title": "Table title faked with a table cell",
+    "inShort": "A data table's title is put in a cell spanning all columns instead of a `<caption>` element.",
+    "atStake": "Screen readers announce a table's `<caption>` when users enter it and list it when they browse tables. A fake title cell is treated as data or as a header for every column, so it is repeated on every cell or not recognised as the title.",
+    "affects": [
+      "Screen-reader users"
+    ],
+    "analogy": "Writing a chart's title inside the first bar.",
+    "fix": [
+      "Move the title text into a `<caption>` as the first child of the `<table>`.",
+      "Delete the spanning title row.",
+      "Style the `<caption>` with CSS if needed."
+    ],
+    "bad": "<table>\n  <tr><td colspan=\"3\">Q3 sales</td></tr>\n  <tr><th>Region</th>...</tr>",
+    "good": "<table>\n  <caption>Q3 sales</caption>\n  <tr><th>Region</th>...</tr>",
+    "wcag": "1.3.1 Info and Relationships (A): structure that is visible (a list, a table, a heading) must also be present in the code, so software can convey it."
+  },
+  "target-size": {
+    "title": "Buttons and links too small to tap",
+    "inShort": "A clickable target is smaller than 24 by 24 CSS pixels and too close to its neighbours.",
+    "atStake": "People with tremors, limited dexterity or large fingers miss small targets or hit the one next to it. On a touchscreen this means opening the wrong link or deleting instead of editing. Repeated misses make some tasks impossible.",
+    "affects": [
+      "Users with motor disabilities",
+      "Mobile and touch users",
+      "Older users"
+    ],
+    "analogy": "Lift buttons the size of a grain of rice, packed edge to edge.",
+    "fix": [
+      "Make the target at least 24x24 CSS pixels, using `padding` or `min-width`/`min-height`.",
+      "Or leave enough space so a 24px circle around each target does not overlap another.",
+      "Aim for 44x44px on touch interfaces."
+    ],
+    "bad": ".icon-btn { width: 16px; height: 16px; margin: 0; }",
+    "good": ".icon-btn { min-width: 24px; min-height: 24px; padding: 4px; }",
+    "wcag": "2.5.8 Target Size Minimum (AA): click and tap targets must be at least 24x24 CSS pixels, or have enough space around them."
+  },
+  "td-has-header": {
+    "title": "Data cells with no header",
+    "inShort": "In a large table, some data cells are not linked to any column or row header.",
+    "atStake": "In a big table, screen-reader users hear one cell at a time. They depend on headers being read with each cell, such as \"March, Revenue, 4,200\". Without headers they hear \"4,200\" with no idea what it measures.",
+    "affects": [
+      "Screen-reader users"
+    ],
+    "analogy": "A spreadsheet with the first row and first column deleted.",
+    "fix": [
+      "Mark header cells with `<th>` instead of `<td>`.",
+      "Add `scope=\"col\"` or `scope=\"row\"` to each `<th>`.",
+      "For complex tables, link cells to headers with `id` and `headers`."
+    ],
+    "bad": "<tr><td>Month</td><td>Revenue</td></tr>\n<tr><td>March</td><td>4,200</td></tr>",
+    "good": "<tr><th scope=\"col\">Month</th><th scope=\"col\">Revenue</th></tr>\n<tr><th scope=\"row\">March</th><td>4,200</td></tr>",
+    "wcag": "1.3.1 Info and Relationships (A): structure that is visible (a list, a table, a heading) must also be present in the code, so software can convey it."
+  },
+  "td-headers-attr": {
+    "title": "Table cells linked to missing headers",
+    "inShort": "A cell's `headers` attribute points to an `id` that is not a header cell in the same table.",
+    "atStake": "The `headers` attribute tells screen readers which headers to read with a cell. If it points to a missing `id`, a `<td>` or a cell in another table, the header is not announced or the wrong text is. The user hears values without context, or with misleading context.",
+    "affects": [
+      "Screen-reader users"
+    ],
+    "analogy": "A footnote marker that points to a footnote that does not exist.",
+    "fix": [
+      "Check every `id` in `headers` exists in the same table.",
+      "Make sure each referenced element is a `<th>`.",
+      "For simple tables, drop `headers` and use `scope` instead."
+    ],
+    "bad": "<th id=\"price\">Price</th>\n<td headers=\"cost\">12</td>",
+    "good": "<th id=\"price\">Price</th>\n<td headers=\"price\">12</td>",
+    "wcag": "1.3.1 Info and Relationships (A): structure that is visible (a list, a table, a heading) must also be present in the code, so software can convey it."
+  },
+  "th-has-data-cells": {
+    "title": "Table headers with nothing under them",
+    "inShort": "A header cell in a data table does not describe any data cells.",
+    "atStake": "Screen readers expect each header to label a row or column of data. A header with no cells, often an empty column or a misplaced `<th>`, confuses the table structure, so users get wrong header announcements or a broken table layout read out.",
+    "affects": [
+      "Screen-reader users"
+    ],
+    "analogy": "A column title in a ledger with an empty column below it.",
+    "fix": [
+      "Remove headers that have no data under or beside them.",
+      "Use `<td>` for cells that are data, not labels.",
+      "Check `colspan`/`rowspan` so headers line up with their cells."
+    ],
+    "bad": "<tr><th>Name</th><th>Email</th><th>Phone</th></tr>\n<tr><td>Ana</td><td>ana@x.io</td></tr>",
+    "good": "<tr><th>Name</th><th>Email</th></tr>\n<tr><td>Ana</td><td>ana@x.io</td></tr>",
+    "wcag": "1.3.1 Info and Relationships (A): structure that is visible (a list, a table, a heading) must also be present in the code, so software can convey it."
+  },
+  "valid-lang": {
+    "title": "Invalid language code",
+    "inShort": "A `lang` attribute on part of the page has a value that is not a real language code.",
+    "atStake": "Screen readers switch pronunciation rules based on `lang`. An invalid code such as `lang=\"french\"` is ignored, so French text is read with English pronunciation and becomes hard to understand. Translation tools and spell checkers also get it wrong.",
+    "affects": [
+      "Screen-reader users",
+      "Users of translation tools"
+    ],
+    "analogy": "Handing a reader a passage in Spanish and telling them it is German.",
+    "fix": [
+      "Use a valid code: `en`, `fr`, `de`, or with region, `en-GB`, `pt-BR`.",
+      "Fix typos and full language names.",
+      "Remove empty or placeholder `lang` values."
+    ],
+    "bad": "<p lang=\"french\">Bonjour tout le monde</p>",
+    "good": "<p lang=\"fr\">Bonjour tout le monde</p>",
+    "wcag": "3.1.2 Language of Parts (AA): text in a different language from the page must be marked with its language so software can read it correctly."
+  },
+  "video-caption": {
+    "title": "Videos without captions",
+    "inShort": "A `<video>` has no captions track, so its speech and sounds are not available as text.",
+    "atStake": "Deaf and hard-of-hearing people miss everything that is said, plus sounds that matter, such as an alarm or laughter. People watching with sound off, in a noisy place or in a second language, miss it too.",
+    "affects": [
+      "Deaf and hard-of-hearing users",
+      "Users in noisy or quiet environments",
+      "Non-native speakers"
+    ],
+    "analogy": "A foreign film shown without subtitles.",
+    "fix": [
+      "Create a captions file (WebVTT, `.vtt`) with the dialogue and important sounds.",
+      "Add it with `<track kind=\"captions\">` inside the `<video>`.",
+      "Check timing and accuracy; auto-generated captions need review."
+    ],
+    "bad": "<video src=\"demo.mp4\" controls></video>",
+    "good": "<video src=\"demo.mp4\" controls>\n  <track kind=\"captions\" src=\"demo.en.vtt\" srclang=\"en\" label=\"English\">\n</video>",
+    "wcag": "1.2.2 Captions Prerecorded (A): recorded videos with sound must have synchronised captions."
+  }
+}

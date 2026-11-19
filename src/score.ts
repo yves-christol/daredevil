@@ -7,16 +7,22 @@ import { isScored } from './wcag.ts';
  *
  *   rulePenalty = weight(impact) * (1 + log2(failingNodes))
  *   pageScore   = 100 * exp(-sum(rulePenalty) / K)
- *   siteScore   = mean(pageScore) over successfully scanned pages
+ *   siteScore   = mean of the N lowest pageScores, N = max(ceil(10% of pages), 5)
+ *                 (all pages when fewer than 5 were scanned)
  *
  * - Impact weights make one critical issue cost far more than one minor issue.
  * - log2 on node count: 200 broken buttons cost more than 1, but not 200x, and fixing
  *   half of them still moves the score (fine-grained progress tracking).
  * - exp(-P/K) maps any penalty onto 0-100 continuously, never saturating at 0.
- * - Averaging pages keeps big and small sites comparable and rewards fixing shared
- *   templates (a header fix lifts every page).
+ * - Worst-pages mean (v2): a plain mean over all pages rose with crawl depth, because deep
+ *   crawls add many simple pages that dilute defects on the hub pages. The worst tail
+ *   describes the experience where it is worst, does not depend on how many easy pages
+ *   were found, and the 5-page floor keeps small crawls from resting on a single page.
+ *   The same tail rule applies to every sub-score; the plain mean is kept as `mean`.
  */
-export const SCORING_VERSION = '1.0.0';
+export const SCORING_VERSION = '2.0.0';
+export const WORST_SHARE = 0.1;
+export const WORST_MIN_PAGES = 5;
 export const IMPACT_WEIGHT: Record<Impact, number> = { critical: 10, serious: 5, moderate: 2, minor: 1 };
 export const K = 100;
 
@@ -73,23 +79,35 @@ export function scorePage(page: PageResult, excludeGroup?: string): PageScore {
   };
 }
 
+/** Number of pages the site score is computed from. */
+export function worstPageCount(pages: number): number {
+  return Math.min(pages, Math.max(Math.ceil(pages * WORST_SHARE), WORST_MIN_PAGES));
+}
+
+/** Mean of the lowest worstPageCount(values.length) values (unrounded). */
+function worstMean(values: number[]): number {
+  if (values.length === 0) return 0;
+  const tail = [...values].sort((a, b) => a - b).slice(0, worstPageCount(values.length));
+  return tail.reduce((a, v) => a + v, 0) / tail.length;
+}
+
 export function scoreSite(pages: PageResult[], excludeGroup?: string): ScoreBreakdown {
   const ok = pages.filter((p) => p.status === 'ok');
   const scores = ok.map((p) => scorePage(p, excludeGroup));
-  const mean = (f: (s: PageScore) => number) =>
-    scores.length === 0 ? 0 : round(scores.reduce((a, s) => a + f(s), 0) / scores.length);
-  const byPrinciple = Object.fromEntries(PRINCIPLES.map((k) => [k, mean((s) => s.byPrinciple[k])])) as ScoreBreakdown['byPrinciple'];
+  const worst = (f: (s: PageScore) => number) => round(worstMean(scores.map(f)));
+  const byPrinciple = Object.fromEntries(PRINCIPLES.map((k) => [k, worst((s) => s.byPrinciple[k])])) as ScoreBreakdown['byPrinciple'];
   return {
-    overall: mean((s) => s.overall),
+    overall: worst((s) => s.overall),
     byPrinciple,
-    byLevel: { A: mean((s) => s.byLevel.A), AA: mean((s) => s.byLevel.AA) },
-    bestPractice: mean((s) => s.bestPractice),
+    byLevel: { A: worst((s) => s.byLevel.A), AA: worst((s) => s.byLevel.AA) },
+    bestPractice: worst((s) => s.bestPractice),
+    mean: scores.length === 0 ? 0 : round(scores.reduce((a, s) => a + s.overall, 0) / scores.length),
+    worstPages: worstPageCount(scores.length),
   };
 }
 
 /** Unrounded site score, used for gain estimates. */
 export function rawSiteOverall(pages: PageResult[], excludeGroup?: string): number {
   const ok = pages.filter((p) => p.status === 'ok');
-  if (ok.length === 0) return 0;
-  return ok.reduce((a, p) => a + 100 * Math.exp(-pagePenalties(p, excludeGroup).wcag / K), 0) / ok.length;
+  return worstMean(ok.map((p) => 100 * Math.exp(-pagePenalties(p, excludeGroup).wcag / K)));
 }

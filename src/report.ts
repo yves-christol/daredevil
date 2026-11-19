@@ -172,6 +172,9 @@ export function reportMarkdown(r: Report, diff?: ReportDiff): string {
   out.push(`| Level A | ${s.score.byLevel.A} |`, `| Level AA | ${s.score.byLevel.AA} |`);
   for (const [k, v] of Object.entries(s.score.byPrinciple)) out.push(`| ${k[0].toUpperCase() + k.slice(1)} | ${v} |`);
   out.push(`| Best practices (not in overall) | ${s.score.bestPractice} |`, '');
+  if (s.score.worstPages !== undefined && s.score.mean !== undefined) {
+    out.push(`Scores are the mean of the ${s.score.worstPages} lowest-scoring of ${s.pagesScanned} pages (mean over all pages: ${s.score.mean}).`, '');
+  }
   out.push(
     `Violations: **${s.violations.nodes} nodes in ${s.violations.groups} root-cause groups** ` +
       `(critical ${s.violations.byImpact.critical}, serious ${s.violations.byImpact.serious}, moderate ${s.violations.byImpact.moderate}, minor ${s.violations.byImpact.minor}). ` +

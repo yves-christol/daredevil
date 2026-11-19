@@ -309,7 +309,7 @@ The headline score covers the **WCAG 2.0 / 2.1 / 2.2, level A and AA** rules of 
 ```text
 rulePenalty = weight(impact) × (1 + log2(failingNodes))     weights: critical 10, serious 5, moderate 2, minor 1
 pageScore   = 100 × exp(−Σ rulePenalty / 100)
-siteScore   = mean(pageScore) over scanned pages
+siteScore   = mean of the N lowest pageScores, N = max(ceil(10% of pages), 5)   (all pages if fewer than 5)
 ```
 
 | Design choice | Why |
@@ -317,7 +317,7 @@ siteScore   = mean(pageScore) over scanned pages
 | Impact weights | One critical blocker costs as much as ten minor issues. |
 | `log2` of node count | 200 broken buttons cost more than 1, but not 200 times more. Fixing half of them still moves the score, which keeps progress visible. |
 | `exp(−P/100)` | A continuous 0–100 scale that never collapses to 0, so two bad sites can still be told apart. |
-| Mean over pages | Sites of different sizes stay comparable, and fixing a shared template (header, footer) lifts every page. |
+| Mean of the worst pages | The score describes the experience where it is worst. A plain mean over all pages rose with crawl depth: a deep crawl adds many simple pages that dilute defects on the main ones (one site went from 57 on 10 pages to 91 on 158 pages with identical page scores). The 5-page floor keeps small crawls from resting on a single page. Sub-scores use the same rule; the plain mean is still reported as `summary.score.mean`. |
 | Best practices excluded | axe best-practice rules (`region`, `landmark-*`…) are not WCAG requirements. They get their own sub-score. |
 | `needsReview` excluded | Undecided results are never counted as failures (no false positives in the score). |
 

@@ -373,6 +373,7 @@ ${faviconDataUri() ? `<link rel="icon" href="${faviconDataUri()}">` : ''}
     ${ring(s.score.overall)}
     <p class="band-label band-text-${band(s.score.overall)}"><span aria-hidden="true">${BAND_ICON[band(s.score.overall)]}</span> ${BAND_LABEL[band(s.score.overall)]}</p>
     <p class="muted small">WCAG 2.2 A + AA${extras.diff ? ` · ${signed(extras.diff.overall.delta)} since last run` : ''}</p>
+    ${s.score.worstPages !== undefined && s.score.mean !== undefined ? `<p class="muted small">Worst ${s.score.worstPages} of ${s.pagesScanned} pages · all-page mean ${s.score.mean}</p>` : ''}
   </div>
   <div class="hero-meters">
     <h2 class="visually-hidden">Score breakdown</h2>
@@ -457,7 +458,7 @@ ${imagesSection(r.pages)}
 <section id="method" aria-labelledby="method-h" class="prose">
   <h2 id="method-h">Method and limits</h2>
   <p>Each page is loaded in Chromium (${esc(r.config.viewport.width)}×${esc(r.config.viewport.height)}, reduced motion${r.config.dismissConsent ? ', cookie dialogs dismissed with "reject"' : ''}) and tested with axe-core ${esc(r.tool.axeVersion)} against WCAG 2.0, 2.1 and 2.2 level A and AA rules, plus axe best practices.</p>
-  <p><strong>Scoring v${esc(r.tool.scoringVersion)}.</strong> Each failing rule costs <code>weight × (1 + log2(failing elements))</code> with weights critical 10, serious 5, moderate 2, minor 1. A page scores <code>100 × exp(−penalty / 100)</code>, and the site score is the mean over pages. Best-practice rules and undecided results are excluded from the overall score. Scores are comparable only with the same scoring and axe-core versions.</p>
+  <p><strong>Scoring v${esc(r.tool.scoringVersion)}.</strong> Each failing rule costs <code>weight × (1 + log2(failing elements))</code> with weights critical 10, serious 5, moderate 2, minor 1. A page scores <code>100 × exp(−penalty / 100)</code>. ${r.summary.score.worstPages !== undefined ? `The site score is the mean of the lowest-scoring pages: the worst 10%, and at least 5 (all pages when fewer were scanned), here ${r.summary.score.worstPages} of ${r.summary.pagesScanned}. Each sub-score uses the same rule. A plain mean over all pages rises with crawl depth, as simple pages dilute the defects of the main ones; the worst pages do not. Estimated gains are measured on this score, so a fix that only touches pages outside the worst set shows little or no gain.` : 'The site score is the mean over pages.'} Best-practice rules and undecided results are excluded from the overall score. Scores are comparable only with the same scoring and axe-core versions.</p>
   <p><strong>Limits.</strong> Automated rules find only part of WCAG failures. A high score means few detectable violations, not conformance: manual testing with a keyboard and screen readers is still required.</p>
   <p class="muted small">daredevil ${esc(r.tool.version)} · ${esc(r.tool.browser)} · report schema ${esc(r.schemaVersion)} · data: <code>report.json</code></p>
 </section>

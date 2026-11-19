@@ -113,6 +113,10 @@ export interface ScoreBreakdown {
   byLevel: { A: number; AA: number };
   /** Non-WCAG axe best-practice rules; reported, not part of the headline. */
   bestPractice: number;
+  /** Site only (scoring v2+): plain mean of page scores, for reference. */
+  mean?: number;
+  /** Site only (scoring v2+): number of lowest-scoring pages the site scores are computed from. */
+  worstPages?: number;
 }
 
 export interface PageScore extends ScoreBreakdown {

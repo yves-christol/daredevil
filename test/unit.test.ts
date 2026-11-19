@@ -65,6 +65,25 @@ test('score: perfect page is 100, monotonic in nodes and impact', () => {
   assert.equal(scorePage(page([rule('serious', 3, 'none')])).overall, 100);
 });
 
+test('site score: mean of the worst max(10%, 5) pages, not diluted by easy pages', async () => {
+  const { scoreSite, rawSiteOverall, worstPageCount } = await import('../src/score.ts');
+  assert.deepEqual([3, 5, 10, 49, 50, 51, 158, 246].map(worstPageCount), [3, 5, 5, 5, 5, 6, 16, 25]);
+  const bad = page([rule('critical', 1)]); // 90.5
+  const worse = page([rule('critical', 4)]);
+  const few = [bad, worse, bad];
+  const many = [...few, ...Array.from({ length: 60 }, () => page([]))];
+  const s = scoreSite(few);
+  assert.equal(s.worstPages, 3);
+  assert.equal(s.overall, s.mean, 'fewer than 5 pages: all pages count');
+  // 63 pages -> worst 7: adding 60 perfect pages must not hide the 3 bad ones as a plain mean would
+  const m = scoreSite(many);
+  assert.equal(m.worstPages, 7);
+  assert.ok(m.overall < 100 && m.mean! > m.overall, `worst ${m.overall} vs mean ${m.mean}`);
+  assert.ok(m.mean! > 99);
+  // a fix on the bad pages raises the score; gain uses the same rule
+  assert.ok(rawSiteOverall(many, 'g0') > rawSiteOverall(many));
+});
+
 test('markdownToHtml escapes and renders the agent summary subset', async () => {
   const { markdownToHtml } = await import('../src/html.ts');
   const html = markdownToHtml('# T\n\nHello **bold** `<b>` <script>x</script>\n\n- a\n  - b\n\n| H | I |\n|---|---|\n| 1 | 2 |');

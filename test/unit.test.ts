@@ -167,11 +167,13 @@ test('explanations: every in-scope axe rule has a complete plain-language entry'
 });
 
 test('batch: txt and json parsing, resolution, precedence, duplicates', async () => {
-  const { parseBatchFile, resolveEntries, batchSummary, batchName } = await import('../src/batch.ts');
+  const { parseBatchFile, resolveEntries, batchSummary, batchName, batchSlug } = await import('../src/batch.ts');
   const txt = parseBatchFile('# my batch\nname: Q4 run\nbase: https://a.com/fr\n/shop   Shop pages\n\nhttps://b.com/x#frag  # trailing comment\nc.org\n', 'list.txt');
   assert.equal(txt.name, 'Q4 run');
-  assert.equal(batchName(txt, 'x/list.txt'), 'Q4_run');
-  assert.equal(batchName({ defaults: {}, entries: [] }, 'x/my list.txt'), 'my_list');
+  assert.equal(batchName(txt, 'x/list.txt'), 'Q4 run');
+  assert.equal(batchSlug('Q4 run'), 'Q4_run');
+  assert.equal(batchSlug('../../etc'), 'etc', 'no path traversal');
+  assert.equal(batchName({ defaults: {}, entries: [] }, 'x/my list.txt'), 'my list');
   const e = resolveEntries(txt, { maxPages: 5, exclude: ['cli'] });
   assert.deepEqual(e.map((x) => x.url), ['https://a.com/shop', 'https://b.com/x#frag', 'https://c.org'], 'URLs are kept as written, like audit');
   assert.deepEqual(e.map((x) => x.label), ['Shop pages', 'b.com/x#frag', 'c.org']);
@@ -199,4 +201,35 @@ test('batch: txt and json parsing, resolution, precedence, duplicates', async ()
   const r = (status: 'ok' | 'error', overall?: number) => ({ url: 'u', label: 'l', loggedIn: false, status, ...(overall === undefined ? {} : { score: { overall } as never }) });
   assert.deepEqual(batchSummary([r('ok', 80), r('ok', 50), r('error'), r('ok', 61), r('ok', 70)]), { entries: 5, ok: 4, notOk: 1, min: 50, median: 65.5, max: 80 });
   assert.deepEqual(batchSummary([r('error')]), { entries: 1, ok: 0, notOk: 1 });
+});
+
+test('batch page: escaping, safe relative links, worst first, no combined score', async () => {
+  const { renderBatchHtml, batchMarkdown, reportHref } = await import('../src/batchhtml.ts');
+  const { batchSummary } = await import('../src/batch.ts');
+  const score = (overall: number) => ({ overall, byLevel: { A: overall, AA: 90 }, byPrinciple: { perceivable: 1, operable: 1, understandable: 1, robust: 1 }, bestPractice: 80 });
+  const entries = [
+    { url: 'https://a.com/x', label: 'Good <one>', loggedIn: false, status: 'ok' as const, reportDir: '../../../a.com_x/20260101-000000', score: score(92), delta: 1.5, pagesScanned: 5, issueGroups: 2, byImpact: { critical: 0, serious: 1, moderate: 0, minor: 0 },
+      topIssue: { id: 'g', ruleId: 'image-alt', help: 'Images <b>must</b>', impact: 'critical' as const, signature: 's', pageCount: 1, estimatedScoreGain: 3 } },
+    { url: 'https://b.com/', label: 'Bad', loggedIn: true, status: 'ok' as const, reportDir: '../../../b.com_auth/20260101-000000', score: score(41), pagesScanned: 3, issueGroups: 9, byImpact: { critical: 4, serious: 0, moderate: 0, minor: 0 } },
+    { url: 'https://c.com/', label: 'Broken', loggedIn: false, status: 'error' as const, error: 'net::ERR <x>', reportDir: 'javascript:alert(1)' },
+  ];
+  const b = { schemaVersion: '1.0.0', tool: { name: 'daredevil' as const, version: 't', scoringVersion: '2.0.0' }, name: 'Q4 <batch>', source: 'list.txt', generatedAt: '2026-11-19T12:00:00Z', complete: true,
+    imageScreenshots: { loggedOut: true, loggedIn: false }, summary: batchSummary(entries), entries };
+  const html = renderBatchHtml(b, { summaryMd: '# Brief\n\nFix **Bad** first <script>' });
+
+  assert.ok(!html.includes('<one>') && !html.includes('<b>must') && !html.includes('<script>x') && !html.includes('<batch>'), 'site-derived text is escaped');
+  assert.equal(html.match(/<script>/g)?.length, 2, 'only the theme and page scripts');
+  assert.ok(html.includes('&lt;script&gt;'), 'agent summary is escaped');
+  assert.ok(html.includes('href="../../../a.com_x/20260101-000000/report.html"'));
+  assert.ok(!html.includes('javascript:'), 'non-relative report paths are not linked');
+  assert.equal(reportHref({ ...entries[0], reportDir: '/etc' }), undefined);
+  assert.ok(html.indexOf('>Bad<') < html.indexOf('Good &lt;one&gt;') && html.indexOf('Good &lt;one&gt;') < html.indexOf('>Broken'), 'worst first, unscored last');
+  assert.match(html, /Some audits ran with a saved login session/);
+  assert.match(html, /does not combine them into one score/);
+  assert.match(html, /<a class="skip" href="#entries">/);
+
+  const md = batchMarkdown(b);
+  assert.match(md, /^# Batch report: Q4 <batch>/);
+  assert.match(md, /\| \[Bad\]\(\.\.\/\.\.\/\.\.\/b\.com_auth\/20260101-000000\/report\.html\) \| 41 Critical \|/);
+  assert.match(md, /\| Broken \| – \|.*Audit failed: net::ERR <x> \|/);
 });

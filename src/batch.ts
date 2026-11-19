@@ -1,9 +1,10 @@
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { basename, extname, join, relative } from 'node:path';
 import type { Impact, Report, ScoreBreakdown } from './types.ts';
 import { scopeFromUrl } from './crawl.ts';
 import { SCORING_VERSION } from './score.ts';
+import { batchMarkdown, renderBatchHtml } from './batchhtml.ts';
 import {
   DEFAULT_AUDIT_SETTINGS,
   VERSION,
@@ -313,8 +314,11 @@ export function batchSummary(entries: BatchEntryResult[]): BatchReport['summary'
   };
 }
 
-export const batchName = (file: BatchFile, sourcePath: string) =>
-  (file.name ?? basename(sourcePath, extname(sourcePath))).replace(/[^a-zA-Z0-9.-]+/g, '_').replace(/^[._]+/, '') || 'batch';
+/** Display name: the file's "name", else the file name. */
+export const batchName = (file: BatchFile, sourcePath: string) => file.name?.trim() || basename(sourcePath, extname(sourcePath));
+
+/** Folder name under reports/_batches/. */
+export const batchSlug = (name: string) => name.replace(/[^a-zA-Z0-9.-]+/g, '_').replace(/^[._]+/, '') || 'batch';
 
 export interface RunBatchOptions {
   name: string;
@@ -327,7 +331,7 @@ export interface RunBatchOptions {
 
 /** Run entries one after another. A failing entry is recorded and the batch goes on. batch.json is rewritten after each entry. */
 export async function runBatch(o: RunBatchOptions): Promise<{ batchDir: string; batch: BatchReport }> {
-  const batchDir = join(o.out, '_batches', o.name, timestamp());
+  const batchDir = join(o.out, '_batches', batchSlug(o.name), timestamp());
   await mkdir(batchDir, { recursive: true });
   const batch: BatchReport = {
     schemaVersion: BATCH_SCHEMA_VERSION,
@@ -340,9 +344,10 @@ export async function runBatch(o: RunBatchOptions): Promise<{ batchDir: string; 
     summary: batchSummary([]),
     entries: o.entries.map((e) => ({ url: e.url, label: e.label, loggedIn: !!e.options.auth, status: 'pending' })),
   };
+  // Rewritten after each entry: the page shows progress, and an interrupted batch keeps what was done.
   const save = async () => {
     batch.summary = batchSummary(batch.entries);
-    await writeFile(join(batchDir, 'batch.json'), JSON.stringify(batch, null, 2));
+    await writeBatchFiles(batchDir, batch);
   };
   await save();
 
@@ -366,4 +371,22 @@ export async function runBatch(o: RunBatchOptions): Promise<{ batchDir: string; 
   batch.complete = true;
   await save();
   return { batchDir, batch };
+}
+
+/** batch.json, index.html and index.md (with the agent's summary.md, if present in the folder). */
+export async function writeBatchFiles(batchDir: string, batch: BatchReport): Promise<void> {
+  const summaryPath = join(batchDir, 'summary.md');
+  const summaryMd = existsSync(summaryPath) ? await readFile(summaryPath, 'utf8') : undefined;
+  await writeFile(join(batchDir, 'batch.json'), JSON.stringify(batch, null, 2));
+  await writeFile(join(batchDir, 'index.html'), renderBatchHtml(batch, { summaryMd }));
+  await writeFile(join(batchDir, 'index.md'), batchMarkdown(batch));
+}
+
+/** Rebuild index.html / index.md from batch.json. */
+export async function renderBatch(batchDir: string): Promise<string> {
+  const file = join(batchDir, 'batch.json');
+  if (!existsSync(file)) throw new Error(`no batch.json in ${batchDir}`);
+  const batch: BatchReport = JSON.parse(await readFile(file, 'utf8'));
+  await writeBatchFiles(batchDir, batch);
+  return join(batchDir, 'index.html');
 }

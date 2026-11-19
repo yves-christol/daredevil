@@ -11,6 +11,7 @@
     "login": "tsx src/cli.ts login",
     "diff": "tsx src/cli.ts diff",
     "render": "tsx src/cli.ts render",
+    "render-batch": "tsx src/cli.ts render-batch",
     "test": "node --import tsx --test test/*.test.ts",
     "typecheck": "tsc --noEmit"
   },

@@ -203,6 +203,9 @@ test('batch: audits each entry into its own history and lists them in batch.json
     const saved = JSON.parse(await readFile(join(batchDir, 'batch.json'), 'utf8'));
     assert.equal(saved.complete, true);
     assert.deepEqual(saved, JSON.parse(JSON.stringify(batch)));
+    const index = await readFile(join(batchDir, 'index.html'), 'utf8');
+    assert.ok(index.includes(`href="${batch.entries[0].reportDir}/report.html"`), 'index.html links each entry to its report');
+    assert.match(await readFile(join(batchDir, 'index.md'), 'utf8'), /\| \[Shop\]\(/);
     assert.deepEqual(batch.entries.map((e) => e.label), ['Shop', `${url.replace('http://', '')}/nowhere`, 'Unreachable']);
 
     const shop = batch.entries[0];

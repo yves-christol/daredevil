@@ -19,14 +19,16 @@ import {
   withScheme,
   writeFixPrompt,
 } from './run.ts';
-import { batchName, parseBatchFile, preflight, resolveEntries, runBatch, type EntrySettings } from './batch.ts';
+import { batchName, parseBatchFile, preflight, renderBatch, resolveEntries, runBatch, type EntrySettings } from './batch.ts';
 
 const USAGE = `daredevil — accessibility audit (axe-core + Playwright)
 
 Usage:
   daredevil audit <url> [options]     Crawl pages under <url>'s path and audit them
   daredevil batch <file> [options]    Audit every URL or path listed in <file> (.txt or .json), then
-                                      write reports/_batches/<name>/<stamp>/batch.json
+                                      write reports/_batches/<name>/<stamp>/ (batch.json, index.html,
+                                      index.md: every score, linking to each detailed report)
+  daredevil render-batch <batchDir>   Rebuild index.html / index.md, including the agent's summary.md
   daredevil login <url> [options]     Open a browser, let you log in, save the session for --auth
   daredevil diff <before.json> <after.json>
   daredevil render <reportDir>        Rebuild report.md / report.html / fix-prompt.md, including the
@@ -117,6 +119,7 @@ async function main() {
   if (cmd === 'login') return login(rest);
   if (cmd === 'diff') return diff(rest);
   if (cmd === 'render') return render(rest);
+  if (cmd === 'render-batch') return renderBatchCmd(rest);
   process.stdout.write(USAGE);
   process.exit(cmd ? 1 : 0);
 }
@@ -216,6 +219,7 @@ async function batch(argv: string[]) {
     JSON.stringify(
       {
         batchDir,
+        index: join(batchDir, 'index.html'),
         summary: b.summary,
         entries: b.entries.map((e) => ({
           label: e.label,
@@ -292,6 +296,11 @@ async function render(argv: string[]) {
   await writeFile(join(dir, 'report.md'), reportMarkdown(report, extras.diff));
   await writeFile(join(dir, 'report.html'), renderHtml(report, extras));
   console.log(join(dir, 'report.html'));
+}
+
+async function renderBatchCmd(argv: string[]) {
+  if (!argv[0]) throw new Error('usage: daredevil render-batch <batchDir containing batch.json>');
+  console.log(await renderBatch(argv[0]));
 }
 
 main().catch((e) => {

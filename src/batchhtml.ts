@@ -1,9 +1,10 @@
 import type { BatchEntryResult, BatchReport, EntryStatus, SharedIssue } from './batch.ts';
-import { BAND_ICON, BAND_LABEL, band, esc, fmt, impactBadge, markdownToHtml, pageEnd, pageStart, safeHref, signed, type Band } from './htmlkit.ts';
+import { BAND_ICON, BAND_LABEL, band, esc, fmt, impactBadge, markdownToHtml, pageEnd, pageStart, ring, signed, type Band } from './htmlkit.ts';
 
 /**
- * The batch page (index.html) and its markdown twin (index.md): every entry's score in one
- * sortable table, each linking to its detailed report.html. There is no combined score: each
+ * The batch page (index.html) and its markdown twin (index.md). The page opens on a grid of
+ * score dials, one per entry (worst first), each linking to its detailed report.html; the full
+ * sortable table sits in a collapsed "Details" section below. There is no combined score: each
  * entry keeps its own, and the page shows their spread.
  */
 
@@ -66,10 +67,23 @@ export function worstFirst(entries: BatchEntryResult[]): { e: BatchEntryResult; 
     .sort((a, b) => (scored(b.e) ? 1 : 0) - (scored(a.e) ? 1 : 0) || (a.e.score?.overall ?? 0) - (b.e.score?.overall ?? 0) || a.order - b.order);
 }
 
-function bandCounts(entries: BatchEntryResult[]): Record<Band, number> {
-  const c: Record<Band, number> = { bad: 0, poor: 0, fair: 0, good: 0 };
-  for (const e of entries) if (scored(e)) c[band(e.score!.overall)]++;
-  return c;
+function dial(b: BatchReport, { e }: { e: BatchEntryResult; order: number }): string {
+  const href = reportHref(e);
+  const ok = scored(e);
+  const c = changeOf(b, e);
+  const label = href ? `<a href="${esc(href)}">${esc(e.label)}</a>` : esc(e.label);
+  const change =
+    c.delta !== undefined
+      ? `<span class="${c.delta > 0 ? 'up' : c.delta < 0 ? 'down' : 'muted'}">${signed(c.delta)}</span>${c.comparable === false ? '<span class="muted">*</span>' : ''}`
+      : c.isNew
+        ? '<span class="muted">new</span>'
+        : '';
+  const bd = ok ? band(e.score!.overall) : undefined;
+  return `<li class="dial${ok ? '' : ' dial-none'}">
+  ${ok ? ring(e.score!.overall, 120) : `<div class="dial-empty" aria-hidden="true">–</div>`}
+  <h3>${label}</h3>
+  <p class="small">${ok ? `<span class="band-text-${bd}"><span aria-hidden="true">${BAND_ICON[bd!]}</span> ${BAND_LABEL[bd!]}</span>${change ? ` · ${change}` : ''}` : `<span class="${e.status === 'pending' ? 'muted' : 'warn-text'}"><span aria-hidden="true">${e.status === 'pending' ? '…' : '✕'}</span> ${STATUS_LABEL[e.status]}</span>`}${e.loggedIn ? '<span class="muted"> · logged in</span>' : ''}</p>
+</li>`;
 }
 
 function row(b: BatchReport, { e, order }: { e: BatchEntryResult; order: number }, reviewed: boolean): string {
@@ -102,48 +116,39 @@ function row(b: BatchReport, { e, order }: { e: BatchEntryResult; order: number 
 
 export function renderBatchHtml(b: BatchReport, extras: BatchExtras = {}): string {
   const s = b.summary;
-  const counts = bandCounts(b.entries);
   const pending = b.entries.filter((e) => e.status === 'pending').length;
   const anyLoggedIn = b.entries.some((e) => e.loggedIn);
   const nav: [string, string][] = [
+    ['#entries', 'Scores'],
     ...(extras.summaryMd ? [['#summary', 'Summary'] as [string, string]] : []),
-    ['#entries', 'Results'],
+    ['#details', 'Details'],
     ...(b.shared?.length ? [['#shared', 'Shared issues'] as [string, string]] : []),
     ['#method', 'Method'],
   ];
-  const stat = (v: number | undefined, label: string) => `<li><strong>${v ?? '–'}</strong><span>${label}</span></li>`;
 
   return `${pageStart({
     title: `Batch report: ${b.name}`,
     kicker: 'batch report',
-    skip: { href: '#entries', label: 'Skip to results table' },
+    skip: { href: '#entries', label: 'Skip to scores' },
     nav,
     navLabel: 'Batch report sections',
     css: CSS,
   })}
 <main id="main" class="wrap">
-<section class="hero batch-hero" aria-labelledby="title">
-  <div class="hero-text">
-    <h1 id="title">${esc(b.name)}</h1>
-    <p class="muted">${dateLabel(b.generatedAt)} · ${s.entries} audit${s.entries === 1 ? '' : 's'} · ${s.ok} scored${s.notOk ? ` · <strong>${s.notOk} without a score</strong>` : ''}${anyLoggedIn ? ' · includes logged-in audits' : ''}</p>
-    ${b.previous ? previousLine(b) : ''}
-    ${!b.complete ? `<p class="warn" role="note">⚠ Batch ${pending ? `incomplete: ${pending} audit${pending === 1 ? '' : 's'} not run yet (still running, or interrupted)` : 'did not finish cleanly'}.</p>` : ''}
-    ${anyLoggedIn ? '<p class="warn" role="note">⚠ Some audits ran with a saved login session. Their reports may contain personal data from the account. Review before sharing.</p>' : ''}
-    <ul class="stats">
-      ${stat(s.min, 'lowest score')}
-      ${stat(s.median, 'median score')}
-      ${stat(s.max, 'highest score')}
-      ${stat(s.notOk, 'without a score')}
-    </ul>
-  </div>
-  <div class="bands">
-    <h2>Score bands</h2>
-    <ul class="plain band-list">
-      ${(['bad', 'poor', 'fair', 'good'] as Band[])
-        .map((k) => `<li><span class="band-text-${k}"><span aria-hidden="true">${BAND_ICON[k]}</span> ${BAND_LABEL[k]}</span> <span class="muted small">${k === 'good' ? '90+' : k === 'fair' ? '75–89' : k === 'poor' ? '50–74' : 'under 50'}</span><strong>${counts[k]}</strong></li>`)
-        .join('')}
-    </ul>
-  </div>
+<section class="batch-head" aria-labelledby="title">
+  <h1 id="title">${esc(b.name)}</h1>
+  <p class="muted">${dateLabel(b.generatedAt)} · ${s.entries} audit${s.entries === 1 ? '' : 's'}${s.notOk ? ` · <strong>${s.notOk} without a score</strong>` : ''}${s.median !== undefined ? ` · median ${s.median}` : ''}</p>
+  ${b.previous ? previousLine(b) : ''}
+  ${!b.complete ? `<p class="warn" role="note">⚠ Batch ${pending ? `incomplete: ${pending} audit${pending === 1 ? '' : 's'} not run yet (still running, or interrupted)` : 'did not finish cleanly'}.</p>` : ''}
+  ${anyLoggedIn ? '<p class="warn" role="note">⚠ Some audits ran with a saved login session. Their reports may contain personal data from the account. Review before sharing.</p>' : ''}
+</section>
+
+<section id="entries" aria-labelledby="entries-h">
+  <h2 id="entries-h" class="visually-hidden">Scores</h2>
+  <ul class="dial-grid">
+    ${worstFirst(b.entries).map((x) => dial(b, x)).join('\n')}
+  </ul>
+  <p class="muted small legend">Worst first. ${(['bad', 'poor', 'fair', 'good'] as Band[]).map((k) => `<span class="band-text-${k}"><span aria-hidden="true">${BAND_ICON[k]}</span> ${BAND_LABEL[k]}</span> ${k === 'good' ? '90+' : k === 'fair' ? '75–89' : k === 'poor' ? '50–74' : 'under 50'}`).join(' · ')}${b.entries.some((e) => changeOf(b, e).comparable === false) ? ' · * not strictly comparable' : ''}</p>
 </section>
 
 ${extras.summaryMd ? `<section id="summary" aria-labelledby="summary-h" class="prose card">
@@ -151,9 +156,10 @@ ${extras.summaryMd ? `<section id="summary" aria-labelledby="summary-h" class="p
   ${markdownToHtml(extras.summaryMd.replace(/^#\s+.*\n/, ''))}
 </section>` : ''}
 
-<section id="entries" aria-labelledby="entries-h">
-  <h2 id="entries-h">Results <span class="count">${b.entries.length}</span></h2>
-  <p class="lede">One row per audit, worst score first. Select an entry for its detailed report. Scores: WCAG 2.2 A + AA, mean of each audit's worst pages. ${b.previous ? `Change: since the previous batch (${esc(dateLabel(b.previous.generatedAt))}).` : 'Change: since the previous audit of the same scope.'}<span class="js-only" hidden> Select a column heading to sort.</span></p>
+<section id="details" aria-labelledby="details-h">
+  <details class="card">
+  <summary><h2 id="details-h" class="inline-h">Details <span class="count">${b.entries.length}</span></h2></summary>
+  <p class="lede">One row per audit, worst score first. Scores: WCAG 2.2 A + AA, mean of each audit's worst pages. ${b.previous ? `Change: since the previous batch (${esc(dateLabel(b.previous.generatedAt))}).` : 'Change: since the previous audit of the same scope.'}<span class="js-only" hidden> Select a column heading to sort.</span></p>
   <div class="table-wrap" tabindex="0" role="region" aria-label="Results table, scrollable"><table class="sortable" id="entries-table">
     <caption class="visually-hidden">Audit results, sorted by score, lowest first</caption>
     <thead><tr>
@@ -172,6 +178,7 @@ ${extras.summaryMd ? `<section id="summary" aria-labelledby="summary-h" class="p
     </tbody>
   </table></div>
   <p class="visually-hidden" aria-live="polite" id="sort-status"></p>
+  </details>
 </section>
 
 ${b.shared?.length ? sharedSection(b) : ''}
@@ -266,12 +273,19 @@ const JS = `
 `;
 
 const CSS = `
-.batch-hero { grid-template-columns: 1.6fr 1fr; }
-.bands h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
-.band-list li { display: flex; align-items: baseline; gap: .5rem; padding: .35rem 0; border-bottom: 1px solid var(--border); font-size: 15px; }
-.band-list li:last-child { border-bottom: none; }
-.band-list strong { margin-left: auto; font-size: 18px; font-variant-numeric: tabular-nums; }
-.band-list .band-text-bad, .band-list .band-text-poor, .band-list .band-text-fair, .band-list .band-text-good { font-weight: 700; }
+.batch-head { margin-top: 1.5rem; }
+.batch-head p { margin: .2rem 0; }
+.dial-grid { list-style: none; padding: 0; margin: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr)); gap: 1rem; }
+.dial { position: relative; display: flex; flex-direction: column; align-items: center; text-align: center; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 1rem .75rem .85rem; }
+.dial:has(a:hover) { border-color: var(--control); }
+.dial h3 { margin: .5rem 0 .15rem; font-size: 15px; overflow-wrap: anywhere; }
+.dial h3 a::before { content: ""; position: absolute; inset: 0; border-radius: 12px; }
+.dial p { margin: 0; }
+.dial .up { color: var(--good); } .dial .down { color: var(--bad); }
+.dial-empty { width: 120px; height: 120px; border-radius: 50%; border: 14px solid var(--ring-track); display: grid; place-items: center; font-size: 28px; color: var(--muted); }
+.legend { margin-top: 1rem; }
+details.card > summary .inline-h { display: inline; margin: 0; }
+details.card[open] > summary { margin-bottom: .8rem; }
 .sortable { min-width: 60rem; }
 .sortable thead th, .nowrap { white-space: nowrap; }
 .sortable th[data-sort] button { font: inherit; color: inherit; text-transform: inherit; letter-spacing: inherit; background: none; border: 0; padding: 0; cursor: pointer; text-align: inherit; }
@@ -286,7 +300,6 @@ const CSS = `
 .shared tbody th { font-weight: 600; max-width: 32rem; }
 .audits { list-style: none; padding: 0; margin: 0; display: flex; flex-wrap: wrap; gap: .35rem; }
 .audits li { font-size: 14px; border: 1px solid var(--border); border-radius: 999px; padding: .1rem .65rem; }
-@media (max-width: 900px) { .batch-hero { grid-template-columns: 1fr; } }
 `;
 
 function previousLine(b: BatchReport): string {
